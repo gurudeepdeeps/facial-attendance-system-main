@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.py[cod]
+attendance.db
+static/uploads/
+vs_buildtools.exe

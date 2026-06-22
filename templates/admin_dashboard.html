@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Facial Attendance System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --admin-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --dark-bg: #0f0f23;
+            --dark-card: #1a1a2e;
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --shadow-heavy: 0 20px 60px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--dark-bg);
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(240, 147, 251, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(245, 87, 108, 0.1) 0%, transparent 50%);
+            color: #ffffff;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Navbar */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(20px);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: 20px 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow-heavy);
+        }
+
+        .navbar h1 {
+            font-size: 1.8rem;
+            background: var(--admin-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+        }
+
+        .navbar-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-logout {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-logout:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        /* Statistics Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            backdrop-filter: blur(20px);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-heavy);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(240, 147, 251, 0.2) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .stat-icon {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            display: inline-block;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat-pending {
+            --color: #f59e0b;
+        }
+
+        .stat-approved {
+            --color: #10b981;
+        }
+
+        .stat-card.stat-pending .stat-icon {
+            color: #f59e0b;
+        }
+
+        .stat-card.stat-approved .stat-icon {
+            color: #10b981;
+        }
+
+        /* Pending Approvals Section */
+        .section {
+            backdrop-filter: blur(20px);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow-heavy);
+        }
+
+        .section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section h2 i {
+            color: #f59e0b;
+        }
+
+        /* Employees Table */
+        .employees-table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow-x: auto;
+        }
+
+        .employees-table thead {
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .employees-table th {
+            text-align: left;
+            padding: 15px;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+        }
+
+        .employees-table td {
+            padding: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .employees-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .employee-name {
+            font-weight: 600;
+        }
+
+        .employee-email {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+        }
+
+        .face-thumb {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .face-placeholder {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.45);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-pending {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .badge-approved {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-rejected {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .btn-approve {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-approve:hover {
+            background: rgba(16, 185, 129, 0.3);
+            transform: scale(1.05);
+        }
+
+        .btn-reject {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-reject:hover {
+            background: rgba(239, 68, 68, 0.3);
+            transform: scale(1.05);
+        }
+
+        .btn-view {
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            text-decoration: none;
+        }
+
+        .btn-view:hover {
+            background: rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-delete {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-delete:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .empty-state p {
+            font-size: 1.1rem;
+        }
+
+        /* Navigation Links */
+        .nav-links {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .nav-links a {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #ffffff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            background: var(--admin-gradient);
+            border-color: transparent;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .navbar {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .employees-table {
+                font-size: 0.9rem;
+            }
+
+            .employees-table th,
+            .employees-table td {
+                padding: 10px;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Navbar -->
+        <div class="navbar">
+            <h1><i class="fas fa-shield-alt"></i> Admin Dashboard</h1>
+            <div class="navbar-actions">
+                <span style="color: rgba(255, 255, 255, 0.7);">Welcome, {{ session.full_name }}</span>
+                <a href="{{ url_for('logout') }}" class="btn btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="stats-grid">
+            <div class="stat-card stat-pending">
+                <div class="stat-icon"><i class="fas fa-hourglass-half"></i></div>
+                <div class="stat-label">Pending Approvals</div>
+                <div class="stat-value">{{ stats.pending_count }}</div>
+            </div>
+            <div class="stat-card stat-approved">
+                <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+                <div class="stat-label">Approved Employees</div>
+                <div class="stat-value">{{ stats.approved_count }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-users"></i></div>
+                <div class="stat-label">Total Employees</div>
+                <div class="stat-value">{{ stats.total_employees }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
+                <div class="stat-label">Today's Attendance</div>
+                <div class="stat-value">{{ stats.today_attendance }}</div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav-links">
+            <a href="{{ url_for('admin_dashboard') }}" class="active">Dashboard</a>
+            <a href="{{ url_for('admin_pending_approvals') }}">Pending Approvals</a>
+            <a href="{{ url_for('admin_approved_employees') }}">Approved Employees</a>
+            <a href="{{ url_for('admin_rejected_employees') }}">Rejected Employees</a>
+        </div>
+
+        <!-- Pending Approvals Section -->
+        <div class="section">
+            <h2><i class="fas fa-clock"></i> Pending Approvals</h2>
+            
+            {% if pending_employees %}
+                <div style="overflow-x: auto;">
+                    <table class="employees-table">
+                        <thead>
+                            <tr>
+                                <th>Face</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Username</th>
+                                <th>Registered</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for employee in pending_employees %}
+                            <tr>
+                                <td>
+                                    {% if employee[6] %}
+                                        <img class="face-thumb" src="{{ employee[6] }}" alt="{{ employee[2] }} face">
+                                    {% else %}
+                                        <span class="face-placeholder"><i class="fas fa-user"></i></span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="employee-name">{{ employee[2] }}</span></td>
+                                <td><span class="employee-email">{{ employee[3] }}</span></td>
+                                <td>{{ employee[1] }}</td>
+                                <td>{{ employee[4][:10] }}</td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <button class="btn-small btn-approve" onclick='approveEmployee({{ employee[0] }}, {{ employee[2] | tojson }})'><i class="fas fa-check"></i> Approve</button>
+                                        <button class="btn-small btn-reject" onclick='rejectEmployee({{ employee[0] }}, {{ employee[2] | tojson }})'><i class="fas fa-times"></i> Reject</button>
+                                        <a href="{{ url_for('admin_employee_details', employee_id=employee[0]) }}" class="btn-small btn-view"><i class="fas fa-eye"></i> View</a>
+                                        <button class="btn-small btn-delete" onclick='deleteEmployee({{ employee[0] }}, {{ employee[2] | tojson }})'><i class="fas fa-trash"></i> Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-inbox"></i>
+                    <p>No pending approvals at this time</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Attendance Details Section -->
+        <div class="section">
+            <h2><i class="fas fa-clipboard-list"></i> Recent Attendance Details</h2>
+
+            {% if attendance_details %}
+                <div style="overflow-x: auto;">
+                    <table class="employees-table">
+                        <thead>
+                            <tr>
+                                <th>Face</th>
+                                <th>Name</th>
+                                <th>Username</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Status</th>
+                                <th>Confidence</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for attendance in attendance_details %}
+                            <tr>
+                                <td>
+                                    {% if attendance[9] %}
+                                        <img class="face-thumb" src="{{ attendance[9] }}" alt="{{ attendance[2] }} face">
+                                    {% else %}
+                                        <span class="face-placeholder"><i class="fas fa-user"></i></span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="employee-name">{{ attendance[2] }}</span></td>
+                                <td>{{ attendance[3] }}</td>
+                                <td>{{ attendance[5][:10] }}</td>
+                                <td>{{ attendance[5][11:19] }}</td>
+                                <td>
+                                    <span class="badge badge-approved">{{ attendance[6] }}</span>
+                                </td>
+                                <td>{{ '%.2f'|format(attendance[7] or 0) }}</td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <a href="{{ url_for('admin_employee_details', employee_id=attendance[1]) }}" class="btn-small btn-view"><i class="fas fa-eye"></i> View</a>
+                                        <button class="btn-small btn-delete" onclick='deleteEmployee({{ attendance[1] }}, {{ attendance[2] | tojson }})'><i class="fas fa-trash"></i> Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-clipboard-list"></i>
+                    <p>No attendance records available yet</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        async function approveEmployee(employeeId, employeeName) {
+            if (confirm(`Are you sure you want to approve ${employeeName}?`)) {
+                try {
+                    const response = await fetch(`/admin_approve_employee/${employeeId}`, { method: 'POST' });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('Employee approved successfully!');
+                        location.reload();
+                    } else {
+                        alert('Failed to approve employee');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            }
+        }
+
+        async function rejectEmployee(employeeId, employeeName) {
+            if (confirm(`Are you sure you want to reject ${employeeName}?`)) {
+                try {
+                    const response = await fetch(`/admin_reject_employee/${employeeId}`, { method: 'POST' });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('Employee rejected successfully!');
+                        location.reload();
+                    } else {
+                        alert('Failed to reject employee');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            }
+        }
+
+        async function deleteEmployee(employeeId, employeeName) {
+            if (confirm(`Delete ${employeeName}? This will permanently remove the user, attendance records, and face data.`)) {
+                try {
+                    const response = await fetch(`/admin_delete_employee/${employeeId}`, { method: 'POST' });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert(result.message);
+                        location.reload();
+                    } else {
+                        alert(result.message || 'Failed to delete employee');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

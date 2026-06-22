@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Details - Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --admin-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --dark-bg: #0f0f23;
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --shadow-heavy: 0 20px 60px rgba(0, 0, 0, 0.1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--dark-bg);
+            color: #ffffff;
+            min-height: 100vh;
+        }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(20px);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: 20px 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow-heavy);
+        }
+        .btn-back {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .details-card {
+            backdrop-filter: blur(20px);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-heavy);
+        }
+        .face-preview {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .face-preview img,
+        .face-preview-placeholder {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .face-preview-placeholder {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 3rem;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        .detail-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 600;
+        }
+        .detail-value {
+            font-weight: 500;
+        }
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .badge-pending {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+        .badge-approved {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+        .badge-rejected {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            flex: 1;
+        }
+        .btn-approve {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .btn-reject {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-delete {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navbar">
+            <h2>Employee Details</h2>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+        </div>
+
+        <div class="details-card">
+            <div class="face-preview">
+                {% if employee.face_image_url %}
+                    <img src="{{ employee.face_image_url }}" alt="{{ employee.full_name }} registered face">
+                {% else %}
+                    <span class="face-preview-placeholder"><i class="fas fa-user"></i></span>
+                {% endif %}
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Full Name</span>
+                <span class="detail-value">{{ employee.full_name }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Email</span>
+                <span class="detail-value">{{ employee.email }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Username</span>
+                <span class="detail-value">{{ employee.username }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Role</span>
+                <span class="detail-value">{{ employee.role }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Status</span>
+                <span class="detail-value">
+                    {% if employee.status == 'pending' %}
+                        <span class="badge badge-pending">Pending</span>
+                    {% elif employee.status == 'approved' %}
+                        <span class="badge badge-approved">Approved</span>
+                    {% elif employee.status == 'rejected' %}
+                        <span class="badge badge-rejected">Rejected</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Registered Date</span>
+                <span class="detail-value">{{ employee.created_at[:10] }}</span>
+            </div>
+
+            {% if employee.status == 'pending' %}
+            <div class="action-buttons">
+                <button class="btn btn-approve" onclick="approveEmployee({{ employee.id }})">
+                    <i class="fas fa-check"></i> Approve
+                </button>
+                <button class="btn btn-reject" onclick="rejectEmployee({{ employee.id }})">
+                    <i class="fas fa-times"></i> Reject
+                </button>
+            </div>
+            {% endif %}
+
+            <div class="action-buttons">
+                <button class="btn btn-delete" onclick='deleteEmployee({{ employee.id }}, {{ employee.full_name | tojson }})'>
+                    <i class="fas fa-trash"></i> Delete User
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function approveEmployee(employeeId) {
+            if (confirm('Are you sure you want to approve this employee?')) {
+                const response = await fetch(`/admin_approve_employee/${employeeId}`, { method: 'POST' });
+                if (response.ok) {
+                    alert('Employee approved!');
+                    window.location.href = '/admin_dashboard';
+                }
+            }
+        }
+        async function rejectEmployee(employeeId) {
+            if (confirm('Are you sure you want to reject this employee?')) {
+                const response = await fetch(`/admin_reject_employee/${employeeId}`, { method: 'POST' });
+                if (response.ok) {
+                    alert('Employee rejected!');
+                    window.location.href = '/admin_dashboard';
+                }
+            }
+        }
+
+        async function deleteEmployee(employeeId, employeeName) {
+            if (confirm(`Delete ${employeeName}? This will permanently remove the user, attendance records, and face data.`)) {
+                const response = await fetch(`/admin_delete_employee/${employeeId}`, { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    window.location.href = '/admin_dashboard';
+                } else {
+                    alert(result.message || 'Failed to delete employee');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
