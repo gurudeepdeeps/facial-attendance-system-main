@@ -1,231 +1,41 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Search Results - Admin Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --admin-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            --dark-bg: #0f0f23;
-            --glass-bg: rgba(255, 255, 255, 0.1);
-            --glass-border: rgba(255, 255, 255, 0.2);
-            --shadow-heavy: 0 20px 60px rgba(0, 0, 0, 0.1);
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--dark-bg);
-            color: #ffffff;
-            min-height: 100vh;
-        }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        .navbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            backdrop-filter: blur(20px);
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            padding: 20px 30px;
-            border-radius: 16px;
-            margin-bottom: 30px;
-            box-shadow: var(--shadow-heavy);
-        }
-        .navbar h1 {
-            font-size: 1.8rem;
-            background: var(--admin-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 700;
-        }
-        .search-box {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-        }
-        .search-box input {
-            flex: 1;
-            max-width: 400px;
-            padding: 12px 16px;
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            border-radius: 8px;
-            color: #ffffff;
-        }
-        .search-box button {
-            padding: 12px 24px;
-            background: var(--admin-gradient);
-            border: none;
-            border-radius: 8px;
-            color: #ffffff;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .section {
-            backdrop-filter: blur(20px);
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: var(--shadow-heavy);
-        }
-        .employees-table { width: 100%; border-collapse: collapse; }
-        .employees-table th {
-            text-align: left;
-            padding: 15px;
-            color: rgba(255, 255, 255, 0.7);
-            font-weight: 600;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-        }
-        .employees-table td {
-            padding: 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        .face-thumb {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid rgba(255, 255, 255, 0.25);
-            background: rgba(255, 255, 255, 0.1);
-        }
-        .face-placeholder {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.45);
-            border: 2px solid rgba(255, 255, 255, 0.15);
-        }
-        .badge {
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-        .badge-pending {
-            background: rgba(245, 158, 11, 0.2);
-            color: #f59e0b;
-        }
-        .badge-approved {
-            background: rgba(16, 185, 129, 0.2);
-            color: #10b981;
-        }
-        .badge-rejected {
-            background: rgba(239, 68, 68, 0.2);
-            color: #ef4444;
-        }
-        .btn-small {
-            padding: 8px 12px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-        .btn-delete {
-            background: rgba(239, 68, 68, 0.2);
-            color: #ef4444;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-        }
-        .empty-state { text-align: center; padding: 60px 20px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="navbar">
-            <h1><i class="fas fa-search"></i> Search Employees</h1>
-            <a href="{{ url_for('admin_dashboard') }}" style="color: #ffffff; text-decoration: none;"><i class="fas fa-arrow-left"></i> Back</a>
+{% extends "base.html" %}
+{% block title %}Search Students | FaceTrack{% endblock %}
+{% block page_name %}Student Search{% endblock %}
+{% block page_subtitle %}Find accounts by name, username, or email{% endblock %}
+{% block top_actions %}
+    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Back to admin</a>
+    <a class="btn btn-secondary" href="{{ url_for('logout') }}">Sign out</a>
+{% endblock %}
+{% block content %}
+<main class="layout">
+    <section class="panel">
+        <form class="search-box" method="GET" action="{{ url_for('admin_search_students') }}">
+            <input name="q" value="{{ search_term }}" placeholder="Name, username, or email" autofocus>
+            <button class="btn btn-primary" type="submit">Search</button>
+        </form>
+        {% if students %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Face</th><th>Student</th><th>Username</th><th>Status</th><th>Registered</th><th>Actions</th></tr></thead>
+                <tbody>
+                {% for student in students %}
+                    <tr>
+                        <td>{% if student[7] %}<img class="face-thumb" src="{{ student[7] }}" alt="{{ student[2] }}">{% else %}<span class="face-placeholder">{{ student[2][0] }}</span>{% endif %}</td>
+                        <td><strong>{{ student[2] }}</strong><div class="muted">{{ student[3] }}</div></td>
+                        <td>@{{ student[1] }}</td>
+                        <td><span class="badge badge-{{ student[4] }}">{{ student[4] }}</span></td>
+                        <td>{{ student[5][:10] }}</td>
+                        <td><a class="btn-small btn-secondary" href="{{ url_for('admin_student_details', student_id=student[0]) }}">View</a></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
         </div>
-
-        <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Search by name, email, or username..." value="{{ search_term }}">
-            <button onclick="search()"><i class="fas fa-search"></i> Search</button>
-        </div>
-
-        <div class="section">
-            {% if employees %}
-                <table class="employees-table">
-                    <thead>
-                        <tr>
-                            <th>Face</th>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Username</th>
-                            <th>Status</th>
-                            <th>Registered</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for employee in employees %}
-                        <tr>
-                            <td>
-                                {% if employee[7] %}
-                                    <img class="face-thumb" src="{{ employee[7] }}" alt="{{ employee[2] }} face">
-                                {% else %}
-                                    <span class="face-placeholder"><i class="fas fa-user"></i></span>
-                                {% endif %}
-                            </td>
-                            <td>{{ employee[2] }}</td>
-                            <td>{{ employee[3] }}</td>
-                            <td>{{ employee[1] }}</td>
-                            <td>
-                                {% if employee[4] == 'pending' %}
-                                    <span class="badge badge-pending">Pending</span>
-                                {% elif employee[4] == 'approved' %}
-                                    <span class="badge badge-approved">Approved</span>
-                                {% elif employee[4] == 'rejected' %}
-                                    <span class="badge badge-rejected">Rejected</span>
-                                {% endif %}
-                            </td>
-                            <td>{{ employee[5][:10] }}</td>
-                            <td>
-                                <button class="btn-small btn-delete" onclick='deleteEmployee({{ employee[0] }}, {{ employee[2] | tojson }})'><i class="fas fa-trash"></i> Delete</button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            {% else %}
-                <div class="empty-state">
-                    <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 20px; color: rgba(255, 255, 255, 0.3);"></i>
-                    <p>{% if search_term %}No results found for "{{ search_term }}"{% else %}Enter a search term to find employees{% endif %}</p>
-                </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <script>
-        function search() {
-            const query = document.getElementById('searchInput').value;
-            if (query.trim()) {
-                window.location.href = `/admin_search_employees?q=${encodeURIComponent(query)}`;
-            }
-        }
-
-        async function deleteEmployee(employeeId, employeeName) {
-            if (confirm(`Delete ${employeeName}? This will permanently remove the user, attendance records, and face data.`)) {
-                const response = await fetch(`/admin_delete_employee/${employeeId}`, { method: 'POST' });
-                const result = await response.json();
-                if (result.success) {
-                    alert(result.message);
-                    location.reload();
-                } else {
-                    alert(result.message || 'Failed to delete employee');
-                }
-            }
-        }
-        document.getElementById('searchInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') search();
-        });
-    </script>
-</body>
-</html>
+        {% elif search_term %}
+            <div class="empty-state">No students matched "{{ search_term }}".</div>
+        {% else %}
+            <div class="empty-state">Enter a search term to find a student.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

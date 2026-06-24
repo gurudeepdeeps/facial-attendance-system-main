@@ -5,6 +5,7 @@ import sqlite3
 import pickle
 import os
 from werkzeug.utils import secure_filename
+from database import DB_PATH
 
 _face_encoding_cache = None
 
@@ -38,7 +39,7 @@ def save_face_encoding(user_id, image_path):
         face_encoding = face_encodings[0]
         
         # Save to database
-        conn = sqlite3.connect('attendance.db')
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
         # Convert numpy array to blob
@@ -69,7 +70,7 @@ def get_all_face_encodings(force_reload=False):
             list(_face_encoding_cache['known_names'])
         )
 
-    conn = sqlite3.connect('attendance.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -157,7 +158,7 @@ def recognize_faces_in_frame(frame):
 
 def has_face_registered(user_id):
     """Check if user has registered face"""
-    conn = sqlite3.connect('attendance.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute('SELECT COUNT(*) FROM face_encodings WHERE user_id = ?', (user_id,))

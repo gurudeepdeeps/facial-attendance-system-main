@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ student.full_name }} | FaceTrack{% endblock %}
+{% block page_name %}Student Details{% endblock %}
+{% block page_subtitle %}Identity, approval status, and attendance history{% endblock %}
+{% block top_actions %}
+    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Back to admin</a>
+    <a class="btn btn-secondary" href="{{ url_for('logout') }}">Sign out</a>
+{% endblock %}
+{% block content %}
+<main class="layout">
+    <section class="panel panel-sm">
+        <div class="profile-head">
+            {% if student.face_image_url %}
+                <img class="face-thumb" src="{{ student.face_image_url }}" alt="{{ student.full_name }}">
+            {% else %}
+                <span class="face-placeholder">{{ student.full_name[0] }}</span>
+            {% endif %}
+            <div><h2 style="margin: 0;">{{ student.full_name }}</h2><p class="muted">@{{ student.username }}</p></div>
+        </div>
+        <div class="status-line"><span class="badge badge-{{ student.status }}">{{ student.status }}</span></div>
+        <div class="detail-list" style="margin-top: 20px;">
+            <div class="detail-row"><span class="muted">Email</span><strong>{{ student.email }}</strong></div>
+            <div class="detail-row"><span class="muted">Role</span><strong>{{ student.role|title }}</strong></div>
+            <div class="detail-row"><span class="muted">Registered</span><strong>{{ student.created_at[:10] }}</strong></div>
+        </div>
+        <div class="button-row" style="margin-top: 20px;">
+            {% if student.status == 'pending' %}
+                <button class="btn btn-success" onclick="updateStudent('approve')">Approve</button>
+                <button class="btn btn-secondary" onclick="updateStudent('reject')">Reject</button>
+            {% endif %}
+            <button class="btn btn-danger" onclick="deleteStudent()">Delete student</button>
+        </div>
+    </section>
+    <section class="panel panel-lg">
+        <div class="panel-title">
+            <div><h2>Current month</h2><p>Attendance policy performance</p></div>
+            <span class="badge {{ 'badge-low' if attendance_summary.is_low else 'badge-success' }}">{{ attendance_summary.percentage }}%</span>
+        </div>
+        <div class="metric-grid">
+            <div class="metric"><span>Present</span><strong>{{ attendance_summary.present_days }}</strong></div>
+            <div class="metric"><span>Late</span><strong>{{ attendance_summary.late_days }}</strong></div>
+            <div class="metric"><span>Absent</span><strong>{{ attendance_summary.absent_days }}</strong></div>
+            <div class="metric"><span>Completed</span><strong>{{ attendance_summary.completed_days }}</strong></div>
+        </div>
+    </section>
+    <section class="panel">
+        <div class="panel-title"><div><h2>Attendance history</h2><p>Latest records for this student</p></div></div>
+        {% if attendance_records %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Date</th><th>Check-in</th><th>Check-out</th><th>Status</th><th>Check-in confidence</th></tr></thead>
+                <tbody>
+                {% for record in attendance_records %}
+                    <tr>
+                        <td>{{ record[0] }}</td>
+                        <td>{{ record[1][11:19] if record[1] else '-' }}</td>
+                        <td>{{ record[2][11:19] if record[2] else 'Pending' }}</td>
+                        <td><span class="badge badge-{{ record[3] }}">{{ record[3]|replace('_', ' ') }}</span></td>
+                        <td>{{ '%.2f'|format(record[4] or 0) }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<div class="empty-state">No attendance records for this student.</div>{% endif %}
+    </section>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+const studentId = {{ student.id }};
+async function updateStudent(action) {
+    if (!confirm(`${action === 'approve' ? 'Approve' : 'Reject'} this student?`)) return;
+    const response = await fetch(`/admin_${action}_student/${studentId}`, {method: 'POST'});
+    const result = await response.json();
+    if (result.success) window.location.href = '{{ url_for("admin_dashboard") }}'; else alert(result.message || 'Action failed.');
+}
+async function deleteStudent() {
+    if (!confirm('Delete this student and all related face and attendance data?')) return;
+    const response = await fetch(`/admin_delete_student/${studentId}`, {method: 'POST'});
+    const result = await response.json();
+    if (result.success) window.location.href = '{{ url_for("admin_dashboard") }}'; else alert(result.message || 'Delete failed.');
+}
+</script>
+{% endblock %}

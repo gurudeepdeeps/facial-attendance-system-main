@@ -3,21 +3,24 @@ import cv2
 import os
 import threading
 from werkzeug.utils import secure_filename
-import base64
-import numpy as np
+import csv
+import io
 from datetime import datetime, date
-import json
 from functools import wraps
 
-from database import (init_db, verify_user, create_user, save_attendance, get_user_attendance, 
-                     get_today_attendance, get_pending_employees, get_approved_employees, 
-                     get_rejected_employees, approve_employee, reject_employee, 
-                     get_employee_by_id, search_employees, get_dashboard_stats,
-                     get_recent_attendance_details, delete_employee, get_user_face_image_path)
-from face_utils import save_face_encoding, recognize_faces_in_frame, has_face_registered, allowed_file
+from database import (init_db, verify_user, create_user, save_attendance, get_user_attendance,
+                     get_today_attendance, get_pending_students, get_approved_students,
+                     get_rejected_students, approve_student, reject_student,
+                     get_student_by_id, search_students, get_dashboard_stats,
+                     get_recent_attendance_details, delete_student, get_user_face_image_path,
+                     get_today_user_attendance, get_attendance_settings,
+                     get_user_attendance_summary, get_monthly_attendance_report,
+                     get_low_attendance_students, update_attendance_settings)
+from face_utils import (save_face_encoding, recognize_faces_in_frame,
+                        has_face_registered, allowed_file, clear_face_encoding_cache)
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this'  # Change this in production
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-change-this')
 
 # Configuration
 UPLOAD_FOLDER = 'static/uploads'
@@ -98,10 +101,10 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def employee_required(f):
+def student_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session or session.get('role') != 'employee':
+        if 'user_id' not in session or session.get('role') != 'student':
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -120,16 +123,19 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        login_type = request.form.get('login_type', 'employee')  # 'admin' or 'employee'
+        login_type = request.form.get('login_type', 'student')  # 'admin' or student panel
+        is_student_login = login_type == 'student'
         
         user = verify_user(username, password)
         if user:
             # Check if login type matches user role
             if login_type == 'admin' and user['role'] != 'admin':
-                return render_template('login.html', error='Invalid admin credentials. Please use employee login.')
+                return render_template('login.html', error='Invalid admin credentials. Please use student login.')
+            if is_student_login and user['role'] != 'student':
+                return render_template('login.html', error='Invalid student credentials. Please use admin login.')
             
-            if login_type == 'employee':
-                # Check employee status
+            if is_student_login:
+                # Check student approval status
                 if user['status'] == 'pending':
                     return render_template('login.html', error='Your account is waiting for admin approval. Please try again later.')
                 elif user['status'] == 'rejected':
@@ -172,7 +178,7 @@ def register():
         return jsonify({'success': False, 'message': 'Username or email already exists'})
 
 @app.route('/dashboard')
-@employee_required
+@student_required
 def dashboard():
     user_id = session['user_id']
     
@@ -186,12 +192,18 @@ def dashboard():
     today_attendance = get_today_attendance()
 
     profile_image_url = build_face_image_url(get_user_face_image_path(user_id))
+    today_record = get_today_user_attendance(user_id)
+    attendance_summary = get_user_attendance_summary(user_id)
+    attendance_settings = get_attendance_settings()
     
     return render_template('dashboard.html', 
                          face_registered=face_registered,
                          attendance_records=attendance_records,
                          today_attendance=today_attendance,
-                         profile_image_url=profile_image_url)
+                         profile_image_url=profile_image_url,
+                         today_record=today_record,
+                         attendance_summary=attendance_summary,
+                         attendance_settings=attendance_settings)
 
 # ==================== ADMIN ROUTES ====================
 
@@ -199,78 +211,155 @@ def dashboard():
 @admin_required
 def admin_dashboard():
     stats = get_dashboard_stats()
-    pending_employees = append_face_image_urls(get_pending_employees(), 5)
-    attendance_details = append_face_image_urls(get_recent_attendance_details(), 8)
+    pending_students = append_face_image_urls(get_pending_students(), 5)
+    attendance_details = append_face_image_urls(get_recent_attendance_details(), 11)
+    monthly_report = get_monthly_attendance_report()
+    low_attendance_students = get_low_attendance_students()
+    for row in monthly_report:
+        row['face_image_url'] = build_face_image_url(row.get('face_image_path'))
+    for row in low_attendance_students:
+        row['face_image_url'] = build_face_image_url(row.get('face_image_path'))
     
-    return render_template('admin_dashboard.html', 
+    return render_template('admin_dashboard.html',
                          stats=stats,
-                         pending_employees=pending_employees,
-                         attendance_details=attendance_details)
+                         pending_students=pending_students,
+                         attendance_details=attendance_details,
+                         monthly_report=monthly_report,
+                         low_attendance_students=low_attendance_students,
+                         attendance_settings=get_attendance_settings())
 
 @app.route('/admin_pending_approvals')
 @admin_required
 def admin_pending_approvals():
-    pending_employees = append_face_image_urls(get_pending_employees(), 5)
-    return render_template('admin_pending_approvals.html', 
-                         employees=pending_employees)
+    pending_students = append_face_image_urls(get_pending_students(), 5)
+    return render_template('admin_students.html',
+                         students=pending_students,
+                         page_title='Pending Approvals',
+                         page_description='Review and manage new student registrations.',
+                         list_status='pending')
 
-@app.route('/admin_approved_employees')
+@app.route('/admin_approved_students')
 @admin_required
-def admin_approved_employees():
-    approved_employees = append_face_image_urls(get_approved_employees(), 5)
-    return render_template('admin_approved_employees.html', 
-                         employees=approved_employees)
+def admin_approved_students():
+    approved_students = append_face_image_urls(get_approved_students(), 5)
+    return render_template('admin_students.html',
+                         students=approved_students,
+                         page_title='Approved Students',
+                         page_description='Students who can access face attendance.',
+                         list_status='approved')
 
-@app.route('/admin_rejected_employees')
+@app.route('/admin_rejected_students')
 @admin_required
-def admin_rejected_employees():
-    rejected_employees = append_face_image_urls(get_rejected_employees(), 5)
-    return render_template('admin_rejected_employees.html', 
-                         employees=rejected_employees)
+def admin_rejected_students():
+    rejected_students = append_face_image_urls(get_rejected_students(), 5)
+    return render_template('admin_students.html',
+                         students=rejected_students,
+                         page_title='Rejected Students',
+                         page_description='Registrations that were not approved.',
+                         list_status='rejected')
 
-@app.route('/admin_employee_details/<int:employee_id>')
+@app.route('/admin_student_details/<int:student_id>')
 @admin_required
-def admin_employee_details(employee_id):
-    employee = get_employee_by_id(employee_id)
-    if not employee:
+def admin_student_details(student_id):
+    student = get_student_by_id(student_id)
+    if not student:
         return redirect(url_for('admin_dashboard'))
 
-    employee['face_image_url'] = build_face_image_url(employee.get('face_image_path'))
-    return render_template('admin_employee_details.html', employee=employee)
+    student['face_image_url'] = build_face_image_url(student.get('face_image_path'))
+    attendance_summary = get_user_attendance_summary(student_id)
+    attendance_records = get_user_attendance(student_id)
+    return render_template('admin_student_details.html',
+                           student=student,
+                           attendance_summary=attendance_summary,
+                           attendance_records=attendance_records)
 
-@app.route('/admin_approve_employee/<int:employee_id>', methods=['POST'])
+@app.route('/admin_approve_student/<int:student_id>', methods=['POST'])
 @admin_required
-def admin_approve_employee(employee_id):
-    approve_employee(employee_id)
-    return jsonify({'success': True, 'message': 'Employee approved successfully'})
+def admin_approve_student(student_id):
+    approve_student(student_id)
+    return jsonify({'success': True, 'message': 'Student approved successfully'})
 
-@app.route('/admin_reject_employee/<int:employee_id>', methods=['POST'])
+@app.route('/admin_reject_student/<int:student_id>', methods=['POST'])
 @admin_required
-def admin_reject_employee(employee_id):
-    reject_employee(employee_id)
-    return jsonify({'success': True, 'message': 'Employee rejected successfully'})
+def admin_reject_student(student_id):
+    reject_student(student_id)
+    return jsonify({'success': True, 'message': 'Student rejected successfully'})
 
-@app.route('/admin_search_employees', methods=['GET'])
+@app.route('/admin_search_students', methods=['GET'])
 @admin_required
-def admin_search_employees():
+def admin_search_students():
     search_term = request.args.get('q', '')
     if search_term:
-        employees = append_face_image_urls(search_employees(search_term), 6)
+        students = append_face_image_urls(search_students(search_term), 6)
     else:
-        employees = []
-    return render_template('admin_search_results.html', employees=employees, search_term=search_term)
+        students = []
+    return render_template('admin_search_results.html', students=students, search_term=search_term)
 
-@app.route('/admin_delete_employee/<int:employee_id>', methods=['POST'])
+@app.route('/admin_delete_student/<int:student_id>', methods=['POST'])
 @admin_required
-def admin_delete_employee(employee_id):
-    success, message = delete_employee(employee_id)
+def admin_delete_student(student_id):
+    success, message = delete_student(student_id)
+    if success:
+        clear_face_encoding_cache()
     status_code = 200 if success else 404
     return jsonify({'success': success, 'message': message}), status_code
+
+@app.route('/admin_attendance_settings', methods=['POST'])
+@admin_required
+def admin_attendance_settings():
+    reporting_time = request.form.get('reporting_time', '').strip()
+    threshold_text = request.form.get('low_attendance_threshold', '').strip()
+    working_days_text = request.form.get('working_days_per_month', '').strip()
+
+    try:
+        datetime.strptime(reporting_time, '%H:%M')
+        threshold = int(threshold_text)
+        working_days = int(working_days_text)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Enter valid attendance policy values.'}), 400
+
+    if not 1 <= threshold <= 100:
+        return jsonify({'success': False, 'message': 'Attendance threshold must be between 1 and 100.'}), 400
+    if not 1 <= working_days <= 31:
+        return jsonify({'success': False, 'message': 'Working days must be between 1 and 31.'}), 400
+
+    update_attendance_settings(reporting_time, threshold, working_days)
+    return jsonify({'success': True, 'message': 'Attendance policy updated successfully.'})
+
+@app.route('/admin_export_attendance')
+@admin_required
+def admin_export_attendance():
+    month = request.args.get('month') or date.today().strftime('%Y-%m')
+    report = get_monthly_attendance_report(month)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Student ID', 'Full Name', 'Username', 'Email', 'Month',
+        'Working Days', 'Present Days', 'Late Days', 'Absent Days',
+        'Completed Checkouts', 'Attendance Percentage', 'Low Attendance'
+    ])
+
+    for row in report:
+        writer.writerow([
+            row['id'], row['full_name'], row['username'], row['email'], month,
+            row['working_days'], row['present_days'], row['late_days'],
+            row['absent_days'], row['completed_days'], row['percentage'],
+            'Yes' if row['is_low'] else 'No'
+        ])
+
+    csv_data = output.getvalue()
+    filename = f'attendance_report_{month}.csv'
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
 
 # ==================== END ADMIN ROUTES ====================
 
 @app.route('/register_face', methods=['GET', 'POST'])
-@employee_required
+@student_required
 def register_face():
     if request.method == 'POST':
         if 'face_image' not in request.files:
@@ -286,6 +375,8 @@ def register_face():
             file.save(file_path)
             
             success, message = save_face_encoding(session['user_id'], file_path)
+            if not success and os.path.exists(file_path):
+                os.remove(file_path)
             return jsonify({'success': success, 'message': message})
         
         return jsonify({'success': False, 'message': 'Invalid file format'})
@@ -293,12 +384,16 @@ def register_face():
     return render_template('register_face.html')
 
 @app.route('/attendance')
-@employee_required
+@student_required
 def attendance():
     if not has_face_registered(session['user_id']):
         return redirect(url_for('register_face'))
     
-    return render_template('attendance.html')
+    return render_template(
+        'attendance.html',
+        today_record=get_today_user_attendance(session['user_id']),
+        attendance_settings=get_attendance_settings()
+    )
 
 def generate_frames(mirror_preview=False, recognition_interval=5, jpeg_quality=75):
     global camera, latest_frame
@@ -368,13 +463,13 @@ def video_feed():
                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/video_feed_register')
-@employee_required
+@student_required
 def video_feed_register():
     return Response(generate_frames(mirror_preview=True, recognition_interval=8, jpeg_quality=70),
                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/mark_attendance', methods=['POST'])
-@login_required
+@student_required
 def mark_attendance():
     global camera
     if camera is None:
@@ -399,13 +494,13 @@ def mark_attendance():
             break
     
     if user_recognized:
-        save_attendance(user_id, confidence)
-        return jsonify({'success': True, 'message': f'Attendance marked successfully! (Confidence: {confidence:.2f})'})
+        result = save_attendance(user_id, confidence)
+        return jsonify(result)
     else:
         return jsonify({'success': False, 'message': 'Face not recognized. Please ensure your face is clearly visible.'})
 
 @app.route('/mark_attendance_with_photo', methods=['POST'])
-@login_required
+@student_required
 def mark_attendance_with_photo():
     if 'face_image' not in request.files:
         return jsonify({'success': False, 'message': 'No image provided'})
@@ -444,15 +539,15 @@ def mark_attendance_with_photo():
                 break
         
         if user_recognized:
-            save_attendance(user_id, confidence)
-            return jsonify({'success': True, 'message': f'Attendance marked successfully! (Confidence: {confidence:.2f})'})
+            result = save_attendance(user_id, confidence)
+            return jsonify(result)
         else:
             return jsonify({'success': False, 'message': 'Face not recognized. Please ensure your face is clearly visible.'})
     
     return jsonify({'success': False, 'message': 'Invalid file format'})
 
 @app.route('/get_attendance_stats')
-@login_required
+@student_required
 def get_attendance_stats():
     user_id = session['user_id']
     
@@ -469,7 +564,9 @@ def get_attendance_stats():
     
     return jsonify({
         'daily_attendance': daily_attendance,
-        'total_records': len(records)
+        'total_records': len(records),
+        'summary': get_user_attendance_summary(user_id),
+        'today_record': get_today_user_attendance(user_id)
     })
 
 @app.route('/logout')
@@ -483,4 +580,7 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    app.run(debug=True, threaded=True)
+    app.run(
+        debug=os.environ.get('FLASK_DEBUG') == '1',
+        threaded=True
+    )

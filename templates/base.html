@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}FaceTrack{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="page">
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-mark">FT</span>
+                <div>
+                    <h1>{% block page_name %}FaceTrack{% endblock %}</h1>
+                    <p>{% block page_subtitle %}Smart attendance management{% endblock %}</p>
+                </div>
+            </div>
+            <div class="top-actions">
+                {% block top_actions %}
+                    <span class="muted">{{ session.full_name }}</span>
+                    <a class="btn btn-secondary" href="{{ url_for('logout') }}">Sign out</a>
+                {% endblock %}
+            </div>
+        </header>
+        {% block navigation %}{% endblock %}
+        {% block content %}{% endblock %}
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

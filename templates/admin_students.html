@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} | FaceTrack{% endblock %}
+{% block page_name %}{{ page_title }}{% endblock %}
+{% block page_subtitle %}{{ page_description }}{% endblock %}
+{% block navigation %}
+<nav class="nav-pills" style="margin-bottom: 16px;">
+    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Overview</a>
+    <a class="btn {{ 'btn-primary' if list_status == 'pending' else 'btn-secondary' }}" href="{{ url_for('admin_pending_approvals') }}">Pending</a>
+    <a class="btn {{ 'btn-primary' if list_status == 'approved' else 'btn-secondary' }}" href="{{ url_for('admin_approved_students') }}">Approved</a>
+    <a class="btn {{ 'btn-primary' if list_status == 'rejected' else 'btn-secondary' }}" href="{{ url_for('admin_rejected_students') }}">Rejected</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_search_students') }}">Search</a>
+</nav>
+{% endblock %}
+{% block content %}
+<main class="layout">
+    <section class="panel">
+        <div class="panel-title">
+            <div><h2>{{ page_title }}</h2><p>{{ students|length }} record(s)</p></div>
+        </div>
+        {% if students %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Face</th><th>Student</th><th>Username</th><th>Registered</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                {% for student in students %}
+                    <tr>
+                        <td>
+                            {% if student[6] %}<img class="face-thumb" src="{{ student[6] }}" alt="{{ student[2] }}">
+                            {% else %}<span class="face-placeholder">{{ student[2][0] }}</span>{% endif %}
+                        </td>
+                        <td><strong>{{ student[2] }}</strong><div class="muted">{{ student[3] }}</div></td>
+                        <td>@{{ student[1] }}</td>
+                        <td>{{ student[4][:10] }}</td>
+                        <td><span class="badge badge-{{ list_status }}">{{ list_status }}</span></td>
+                        <td>
+                            <div class="actions">
+                                {% if list_status == 'pending' %}
+                                    <button class="btn-small btn-approve" onclick="updateStudent({{ student[0] }}, 'approve')">Approve</button>
+                                    <button class="btn-small btn-reject" onclick="updateStudent({{ student[0] }}, 'reject')">Reject</button>
+                                {% endif %}
+                                <a class="btn-small btn-secondary" href="{{ url_for('admin_student_details', student_id=student[0]) }}">View</a>
+                                <button class="btn-small btn-delete" onclick='deleteStudent({{ student[0] }}, {{ student[2]|tojson }})'>Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="empty-state">No {{ list_status }} students found.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+async function updateStudent(id, action) {
+    if (!confirm(`${action === 'approve' ? 'Approve' : 'Reject'} this student?`)) return;
+    const response = await fetch(`/admin_${action}_student/${id}`, {method: 'POST'});
+    const result = await response.json();
+    if (result.success) location.reload(); else alert(result.message || 'Action failed.');
+}
+async function deleteStudent(id, name) {
+    if (!confirm(`Delete ${name} and all related face and attendance data?`)) return;
+    const response = await fetch(`/admin_delete_student/${id}`, {method: 'POST'});
+    const result = await response.json();
+    if (result.success) location.reload(); else alert(result.message || 'Delete failed.');
+}
+</script>
+{% endblock %}

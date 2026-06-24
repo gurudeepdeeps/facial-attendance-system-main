@@ -1,14 +1,21 @@
-# Facial Attendance System
+# Smart Facial Attendance Management System
 
-A simple Flask-based facial recognition attendance system that lets employees register, upload a face image, and mark attendance via webcam or photo upload. Includes an admin dashboard to approve or reject employees and view attendance.
+A Flask-based facial attendance platform for colleges with student approval, face verification, policy-driven check-in/check-out, late classification, attendance analytics, low-attendance alerts, and CSV reporting.
 
 ## Features
 
-- Employee registration and admin approval
+- Student registration and admin approval
 - Face registration (image upload) and face encoding storage
-- Real-time webcam attendance (MJPEG video feed)
-- Photo-based attendance marking
-- Admin dashboard with approve or reject actions, search, and stats
+- Real-time webcam face verification
+- One daily attendance lifecycle per student
+- Automatic check-in and check-out
+- Duplicate attendance prevention
+- Automatic on-time or late classification
+- Monthly attendance percentage and absence calculation
+- Low-attendance alerts based on an admin-defined threshold
+- Admin-defined reporting time and monthly working days
+- CSV attendance report export
+- Redesigned student and admin interfaces
 
 ## Requirements
 
@@ -24,8 +31,7 @@ A simple Flask-based facial recognition attendance system that lets employees re
 
 ```powershell
 python -m venv .venv
-&
-.venv\Scripts\Activate.ps1
+& .venv\Scripts\Activate.ps1
 ```
 
 3. Install dependencies:
@@ -51,14 +57,31 @@ The app creates a default admin user on first run:
 - Username: admin
 - Password: admin123
 
-Use this account to approve pending users in the Admin Dashboard.
+Use this account to approve pending students in the Admin Dashboard.
 
 ## Typical Workflow
 
-1. User registers on the Registration page.
-2. Admin approves the user in the Admin Dashboard.
-3. User logs in and uploads a clear front-facing photo in Register Face.
-4. User marks attendance from Attendance page using webcam or photo upload.
+1. Student registers on the Registration page.
+2. Admin approves the student in the Admin Dashboard.
+3. Student logs in and uploads a clear front-facing photo in Register Face.
+4. Student checks in using live face verification.
+5. The system classifies the check-in as on time or late.
+6. The next successful scan records check-out.
+7. Additional scans on the same day are blocked as duplicates.
+
+## Attendance Policy
+
+The admin dashboard allows administrators to configure:
+
+- Reporting time, such as `09:15`
+- Low-attendance threshold, such as `75%`
+- Number of working days in the current month
+
+Monthly reports include present days, late days, absent days, completed check-outs, and attendance percentage.
+
+## CSV Reports
+
+Administrators can use **Export CSV** on the admin dashboard to download the current monthly attendance report.
 
 ## Files and Storage
 
