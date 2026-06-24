@@ -32,6 +32,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # Initialize database
 init_db()
 
+@app.route('/favicon.ico')
+def favicon():
+    return redirect(url_for('static', filename='favicon.svg'))
+
 # Global camera object
 camera = None
 latest_frame = None
