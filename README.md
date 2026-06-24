@@ -31,7 +31,8 @@ A Flask-based facial attendance platform for colleges with student approval, fac
 
 ```powershell
 python -m venv .venv
-& .venv\Scripts\Activate.ps1
+& 
+.venv\Scripts\Activate.ps1
 ```
 
 3. Install dependencies:
