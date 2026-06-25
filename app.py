@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response
 import cv2
+import numpy as np
 import os
 import threading
 from werkzeug.utils import secure_filename
@@ -15,8 +16,10 @@ from database import (init_db, verify_user, create_user, save_attendance, get_us
                      get_recent_attendance_details, delete_student, get_user_face_image_path,
                      get_today_user_attendance, get_attendance_settings,
                      get_user_attendance_summary, get_monthly_attendance_report,
-                     get_low_attendance_students, update_attendance_settings)
-from face_utils import (save_face_encoding, recognize_faces_in_frame,
+                     get_low_attendance_students, update_attendance_settings,
+                     get_pending_face_requests, get_pending_face_request_for_user,
+                     count_pending_face_requests, approve_face_request, reject_face_request)
+from face_utils import (submit_face_approval_request, recognize_faces_in_frame,
                         has_face_registered, allowed_file, clear_face_encoding_cache)
 
 app = Flask(__name__)
@@ -40,6 +43,7 @@ def favicon():
 camera = None
 latest_frame = None
 frame_lock = threading.Lock()
+camera_lock = threading.Lock()
 recognition_frame_index = 0
 last_face_locations = []
 last_face_data = []
@@ -88,6 +92,13 @@ def append_face_image_urls(records, image_index):
         output.append(tuple(list(record) + [build_face_image_url(face_image_path)]))
     return output
 
+def encode_status_frame(message):
+    """Build a simple MJPEG frame when the camera cannot provide video."""
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    cv2.putText(frame, message, (42, 235), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (255, 255, 255), 2, cv2.LINE_AA)
+    ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+    return buffer.tobytes() if ret else b''
+
 # Role-based access control decorators
 def login_required(f):
     @wraps(f)
@@ -125,27 +136,28 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
+        username = request.form['username'].strip()
         password = request.form['password']
         login_type = request.form.get('login_type', 'student')  # 'admin' or student panel
         is_student_login = login_type == 'student'
+        error_key = 'student_error' if is_student_login else 'admin_error'
         
         user = verify_user(username, password)
         if user:
             # Check if login type matches user role
             if login_type == 'admin' and user['role'] != 'admin':
-                return render_template('login.html', error='Invalid admin credentials. Please use student login.')
+                return render_template('login.html', **{error_key: 'Invalid admin credentials. Please use student login.'})
             if is_student_login and user['role'] != 'student':
-                return render_template('login.html', error='Invalid student credentials. Please use admin login.')
+                return render_template('login.html', **{error_key: 'Invalid student credentials. Please use admin login.'})
             
             if is_student_login:
                 # Check student approval status
                 if user['status'] == 'pending':
-                    return render_template('login.html', error='Your account is waiting for admin approval. Please try again later.')
+                    return render_template('login.html', **{error_key: 'Your account is waiting for admin approval. Please try again later.'})
                 elif user['status'] == 'rejected':
-                    return render_template('login.html', error='Your registration has been rejected by admin. Please contact support.')
+                    return render_template('login.html', **{error_key: 'Your registration has been rejected by admin. Please contact support.'})
                 elif user['status'] != 'approved':
-                    return render_template('login.html', error='Your account status is invalid.')
+                    return render_template('login.html', **{error_key: 'Your account status is invalid.'})
             
             # Login successful
             session['user_id'] = user['id']
@@ -159,7 +171,7 @@ def login():
             else:
                 return redirect(url_for('dashboard'))
         else:
-            return render_template('login.html', error='Invalid credentials')
+            return render_template('login.html', **{error_key: 'Invalid credentials'})
     
     return render_template('login.html')
 
@@ -196,6 +208,7 @@ def dashboard():
     today_attendance = get_today_attendance()
 
     profile_image_url = build_face_image_url(get_user_face_image_path(user_id))
+    pending_face_request = get_pending_face_request_for_user(user_id)
     today_record = get_today_user_attendance(user_id)
     attendance_summary = get_user_attendance_summary(user_id)
     attendance_settings = get_attendance_settings()
@@ -205,6 +218,7 @@ def dashboard():
                          attendance_records=attendance_records,
                          today_attendance=today_attendance,
                          profile_image_url=profile_image_url,
+                         pending_face_request=pending_face_request,
                          today_record=today_record,
                          attendance_summary=attendance_summary,
                          attendance_settings=attendance_settings)
@@ -230,7 +244,30 @@ def admin_dashboard():
                          attendance_details=attendance_details,
                          monthly_report=monthly_report,
                          low_attendance_students=low_attendance_students,
+                         pending_face_request_count=count_pending_face_requests(),
                          attendance_settings=get_attendance_settings())
+
+@app.route('/admin_face_requests')
+@admin_required
+def admin_face_requests():
+    requests = append_face_image_urls(get_pending_face_requests(), 5)
+    return render_template('admin_face_requests.html', face_requests=requests)
+
+@app.route('/admin_approve_face_request/<int:request_id>', methods=['POST'])
+@admin_required
+def admin_approve_face_request(request_id):
+    success, message = approve_face_request(request_id, session['user_id'])
+    if success:
+        clear_face_encoding_cache()
+    status_code = 200 if success else 404
+    return jsonify({'success': success, 'message': message}), status_code
+
+@app.route('/admin_reject_face_request/<int:request_id>', methods=['POST'])
+@admin_required
+def admin_reject_face_request(request_id):
+    success, message = reject_face_request(request_id, session['user_id'])
+    status_code = 200 if success else 404
+    return jsonify({'success': success, 'message': message}), status_code
 
 @app.route('/admin_pending_approvals')
 @admin_required
@@ -270,10 +307,14 @@ def admin_student_details(student_id):
         return redirect(url_for('admin_dashboard'))
 
     student['face_image_url'] = build_face_image_url(student.get('face_image_path'))
+    pending_face_request = get_pending_face_request_for_user(student_id)
+    if pending_face_request:
+        pending_face_request['face_image_url'] = build_face_image_url(pending_face_request.get('image_path'))
     attendance_summary = get_user_attendance_summary(student_id)
     attendance_records = get_user_attendance(student_id)
     return render_template('admin_student_details.html',
                            student=student,
+                           pending_face_request=pending_face_request,
                            attendance_summary=attendance_summary,
                            attendance_records=attendance_records)
 
@@ -377,8 +418,9 @@ def register_face():
             filename = secure_filename(f"user_{session['user_id']}_{file.filename}")
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(file_path)
-            
-            success, message = save_face_encoding(session['user_id'], file_path)
+
+            request_type = 'update' if has_face_registered(session['user_id']) else 'initial'
+            success, message = submit_face_approval_request(session['user_id'], file_path, request_type)
             if not success and os.path.exists(file_path):
                 os.remove(file_path)
             return jsonify({'success': success, 'message': message})
@@ -401,49 +443,63 @@ def attendance():
 
 def generate_frames(mirror_preview=False, recognition_interval=5, jpeg_quality=75):
     global camera, latest_frame
-    camera = create_camera_capture()
-    if camera is None:
+    with camera_lock:
+        if camera is not None:
+            camera.release()
+        camera = create_camera_capture()
+        latest_frame = None
+        local_camera = camera
+
+    if local_camera is None:
+        frame = encode_status_frame('Camera not available')
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
         return
 
     local_frame_index = 0
     local_face_locations = []
     local_face_data = []
-    
-    while True:
-        success, frame = camera.read()
-        if not success:
-            break
 
-        if mirror_preview:
-            frame = cv2.flip(frame, 1)
+    try:
+        while True:
+            success, frame = local_camera.read()
+            if not success:
+                fallback = encode_status_frame('Camera frame unavailable')
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + fallback + b'\r\n')
+                break
 
-        with frame_lock:
-            latest_frame = frame.copy()
+            if mirror_preview:
+                frame = cv2.flip(frame, 1)
 
-        local_frame_index += 1
-        if local_frame_index % recognition_interval == 0 or not local_face_locations:
-            local_face_locations, local_face_data = recognize_faces_in_frame(frame)
+            with frame_lock:
+                latest_frame = frame.copy()
 
-        face_locations = local_face_locations
-        face_data = local_face_data
-        
-        # Draw rectangles and names
-        for (top, right, bottom, left), (name, user_data) in zip(face_locations, face_data):
-            # Draw rectangle
-            cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-            
-            # Draw name
-            cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
-            font = cv2.FONT_HERSHEY_DUPLEX
-            cv2.putText(frame, name, (left + 6, bottom - 6), font, 0.6, (255, 255, 255), 1)
-        
-        ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
-        if not ret:
-            continue
-        frame = buffer.tobytes()
-        
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            local_frame_index += 1
+            if local_frame_index % recognition_interval == 0 or not local_face_locations:
+                local_face_locations, local_face_data = recognize_faces_in_frame(frame)
+
+            face_locations = local_face_locations
+            face_data = local_face_data
+
+            for (top, right, bottom, left), (name, user_data) in zip(face_locations, face_data):
+                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
+                font = cv2.FONT_HERSHEY_DUPLEX
+                cv2.putText(frame, name, (left + 6, bottom - 6), font, 0.6, (255, 255, 255), 1)
+
+            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
+            if not ret:
+                continue
+            frame = buffer.tobytes()
+
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    finally:
+        with camera_lock:
+            if camera is local_camera:
+                local_camera.release()
+                camera = None
 
 @app.route('/capture_frame')
 @login_required
@@ -475,16 +531,12 @@ def video_feed_register():
 @app.route('/mark_attendance', methods=['POST'])
 @student_required
 def mark_attendance():
-    global camera
-    if camera is None:
-        return jsonify({'success': False, 'message': 'Camera not initialized'})
-    
-    # Capture current frame
-    success, frame = camera.read()
-    if not success:
-        return jsonify({'success': False, 'message': 'Failed to capture frame'})
-    
-    # Recognize faces
+    with frame_lock:
+        frame = None if latest_frame is None else latest_frame.copy()
+
+    if frame is None:
+        return jsonify({'success': False, 'message': 'Camera feed is not ready. Wait for the preview and try again.'})
+
     face_locations, face_data = recognize_faces_in_frame(frame)
     
     user_id = session['user_id']
@@ -585,6 +637,8 @@ def logout():
 
 if __name__ == '__main__':
     app.run(
+        host=os.environ.get('FLASK_RUN_HOST', '127.0.0.1'),
+        port=int(os.environ.get('PORT', 5000)),
         debug=os.environ.get('FLASK_DEBUG') == '1',
         threaded=True
     )

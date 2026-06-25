@@ -56,6 +56,22 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS face_approval_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            encoding BLOB NOT NULL,
+            image_path TEXT NOT NULL,
+            request_type TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TIMESTAMP,
+            reviewed_by INTEGER,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            FOREIGN KEY (reviewed_by) REFERENCES users (id)
+        )
+    ''')
     
     # Attendance records table
     cursor.execute('''
@@ -471,6 +487,139 @@ def reject_student(user_id):
     conn.close()
     return True
 
+def get_pending_face_requests():
+    """Get face registration/update requests waiting for admin approval."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT fr.id, fr.user_id, u.full_name, u.username, u.email,
+               fr.image_path, fr.request_type, fr.requested_at
+        FROM face_approval_requests fr
+        JOIN users u ON fr.user_id = u.id
+        WHERE fr.status = 'pending'
+        ORDER BY fr.requested_at ASC
+    ''')
+
+    records = cursor.fetchall()
+    conn.close()
+    return records
+
+def get_pending_face_request_for_user(user_id):
+    """Return the newest pending face request for one student."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT id, request_type, image_path, requested_at
+        FROM face_approval_requests
+        WHERE user_id = ? AND status = 'pending'
+        ORDER BY requested_at DESC, id DESC
+        LIMIT 1
+    ''', (user_id,))
+
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        'id': row[0],
+        'request_type': row[1],
+        'image_path': row[2],
+        'requested_at': row[3],
+    }
+
+def count_pending_face_requests():
+    """Count pending face approval requests."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM face_approval_requests WHERE status = 'pending'")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+def approve_face_request(request_id, admin_user_id):
+    """Approve a pending face request and make it the student's active face."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT user_id, encoding, image_path
+        FROM face_approval_requests
+        WHERE id = ? AND status = 'pending'
+    ''', (request_id,))
+    request_row = cursor.fetchone()
+
+    if not request_row:
+        conn.close()
+        return False, 'Face request not found'
+
+    user_id, encoding, image_path = request_row
+    cursor.execute('SELECT image_path FROM face_encodings WHERE user_id = ?', (user_id,))
+    old_active_paths = [row[0] for row in cursor.fetchall()]
+
+    cursor.execute('DELETE FROM face_encodings WHERE user_id = ?', (user_id,))
+    cursor.execute('''
+        INSERT INTO face_encodings (user_id, encoding, image_path)
+        VALUES (?, ?, ?)
+    ''', (user_id, encoding, image_path))
+    cursor.execute('''
+        UPDATE face_approval_requests
+        SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
+        WHERE id = ?
+    ''', (admin_user_id, request_id))
+    cursor.execute('''
+        UPDATE face_approval_requests
+        SET status = 'superseded', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
+        WHERE user_id = ? AND status = 'pending' AND id != ?
+    ''', (admin_user_id, user_id, request_id))
+
+    conn.commit()
+    conn.close()
+
+    for old_path in old_active_paths:
+        if old_path and old_path != image_path and os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
+    return True, 'Face request approved successfully'
+
+def reject_face_request(request_id, admin_user_id):
+    """Reject a pending face request without changing the active face."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT image_path
+        FROM face_approval_requests
+        WHERE id = ? AND status = 'pending'
+    ''', (request_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return False, 'Face request not found'
+
+    image_path = row[0]
+    cursor.execute('''
+        UPDATE face_approval_requests
+        SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
+        WHERE id = ?
+    ''', (admin_user_id, request_id))
+
+    conn.commit()
+    conn.close()
+
+    if image_path and os.path.exists(image_path):
+        try:
+            os.remove(image_path)
+        except OSError:
+            pass
+
+    return True, 'Face request rejected'
+
 def get_student_by_id(user_id):
     """Get student details by ID."""
     conn = get_connection()
@@ -654,7 +803,6 @@ def get_user_attendance_summary(user_id, month=None):
     present_days = row[0] or 0
     late_days = row[1] or 0
     completed_days = row[2] or 0
-    absent_days = max(working_days - present_days, 0)
     percentage = round((present_days / working_days) * 100, 1) if working_days else 0
 
     return {
@@ -663,7 +811,7 @@ def get_user_attendance_summary(user_id, month=None):
         'present_days': present_days,
         'late_days': late_days,
         'completed_days': completed_days,
-        'absent_days': absent_days,
+        'absent_days': 0,
         'percentage': percentage,
         'threshold': settings['low_attendance_threshold'],
         'is_low': percentage < settings['low_attendance_threshold'],
@@ -720,7 +868,7 @@ def get_monthly_attendance_report(month=None):
             'present_days': present_days,
             'late_days': late_days,
             'completed_days': completed_days,
-            'absent_days': max(working_days - present_days, 0),
+            'absent_days': 0,
             'working_days': working_days,
             'percentage': percentage,
             'is_low': percentage < settings['low_attendance_threshold'],
@@ -749,9 +897,12 @@ def delete_student(user_id):
 
     cursor.execute('SELECT image_path FROM face_encodings WHERE user_id = ?', (user_id,))
     image_paths = [row[0] for row in cursor.fetchall()]
+    cursor.execute('SELECT image_path FROM face_approval_requests WHERE user_id = ?', (user_id,))
+    image_paths.extend(row[0] for row in cursor.fetchall())
 
     cursor.execute('DELETE FROM attendance WHERE user_id = ?', (user_id,))
     cursor.execute('DELETE FROM face_encodings WHERE user_id = ?', (user_id,))
+    cursor.execute('DELETE FROM face_approval_requests WHERE user_id = ?', (user_id,))
     cursor.execute('DELETE FROM users WHERE id = ? AND role = ?', (user_id, 'student'))
     conn.commit()
     conn.close()

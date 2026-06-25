@@ -26,6 +26,9 @@
             </div>
         </div>
         <div class="status-line">
+            {% if pending_face_request %}
+                <span class="badge badge-warning">Face approval pending</span>
+            {% endif %}
             {% if face_registered %}
                 <span class="badge badge-success">Face registered</span>
             {% else %}
@@ -46,7 +49,7 @@
                 </a>
             {% endif %}
             <a class="btn btn-secondary" href="{{ url_for('register_face') }}">
-                {% if face_registered %}Update face{% else %}Register face{% endif %}
+                {% if pending_face_request %}Review pending face{% elif face_registered %}Update face{% else %}Register face{% endif %}
             </a>
         </div>
     </section>

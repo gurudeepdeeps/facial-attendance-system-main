@@ -8,6 +8,7 @@
     <a class="btn btn-secondary" href="{{ url_for('admin_pending_approvals') }}">Pending</a>
     <a class="btn btn-secondary" href="{{ url_for('admin_approved_students') }}">Approved</a>
     <a class="btn btn-secondary" href="{{ url_for('admin_rejected_students') }}">Rejected</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_face_requests') }}">Face requests</a>
     <a class="btn btn-secondary" href="{{ url_for('admin_search_students') }}">Search</a>
     <a class="btn btn-success" href="{{ url_for('admin_export_attendance') }}">Export CSV</a>
 </nav>
@@ -27,6 +28,7 @@
         </div>
         <div class="status-line">
             <span class="badge badge-warning">{{ stats.pending_count }} pending approvals</span>
+            <span class="badge badge-warning">{{ pending_face_request_count }} face requests</span>
             <span class="badge badge-neutral">{{ stats.total_students }} total students</span>
             <span class="badge badge-neutral">Reporting time {{ attendance_settings.reporting_time }}</span>
             <span class="badge badge-neutral">Threshold {{ attendance_settings.low_attendance_threshold }}%</span>

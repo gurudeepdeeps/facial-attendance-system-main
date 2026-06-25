@@ -10,7 +10,7 @@
 <main class="layout">
     <section class="panel panel-lg">
         <div class="panel-title">
-            <div><h2>Register a clear face image</h2><p>The server accepts exactly one detectable face.</p></div>
+            <div><h2>Submit a clear face image</h2><p>An administrator must approve the image before it is used for attendance.</p></div>
         </div>
         <div class="tabbar">
             <button class="tab active" type="button" data-tab="camera">Live camera</button>
@@ -21,7 +21,7 @@
             <div class="camera-box"><img id="cameraFeed" src="{{ url_for('video_feed_register') }}" alt="Live camera feed"></div>
             <div class="button-row" style="margin-top: 16px;">
                 <button id="captureButton" class="btn btn-primary" type="button">Capture photo</button>
-                <button id="registerCaptureButton" class="btn btn-success" type="button" disabled>Register captured face</button>
+                <button id="registerCaptureButton" class="btn btn-success" type="button" disabled>Submit captured face</button>
             </div>
             <div id="capturedPreview" style="margin-top: 16px;"></div>
         </div>
@@ -36,7 +36,7 @@
             </label>
             <div id="uploadPreview" style="margin-top: 16px;"></div>
             <div class="button-row" style="margin-top: 16px;">
-                <button id="registerUploadButton" class="btn btn-primary" type="button" disabled>Register uploaded face</button>
+                <button id="registerUploadButton" class="btn btn-primary" type="button" disabled>Submit uploaded face</button>
             </div>
         </div>
         <div id="faceMessage"></div>
@@ -51,7 +51,7 @@
             <div class="detail-row"><span>Obstruction</span><strong>No mask or hat</strong></div>
             <div class="detail-row"><span>Sharpness</span><strong>Not blurred</strong></div>
         </div>
-        <p class="muted" style="margin-top: 20px;">Registering again updates the latest face profile used by the recognition system.</p>
+        <p class="muted" style="margin-top: 20px;">Submitting again creates a new admin review request. Your current approved face remains active until the update is approved.</p>
     </aside>
 </main>
 {% endblock %}
@@ -109,7 +109,7 @@
             const response = await fetch('{{ url_for("register_face") }}', {method: 'POST', body: data});
             const result = await response.json();
             showMessage(result.message, result.success);
-            if (result.success) setTimeout(() => window.location.href = '{{ url_for("dashboard") }}', 1500);
+            if (result.success) setTimeout(() => window.location.href = '{{ url_for("dashboard") }}', 1800);
         } catch (error) {
             showMessage('Face registration failed. Please try again.', false);
         } finally {

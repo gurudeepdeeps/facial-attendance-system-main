@@ -18,6 +18,12 @@
             <div><h2 style="margin: 0;">{{ student.full_name }}</h2><p class="muted">@{{ student.username }}</p></div>
         </div>
         <div class="status-line"><span class="badge badge-{{ student.status }}">{{ student.status }}</span></div>
+        {% if pending_face_request %}
+            <div class="message message-warning">
+                Face {{ pending_face_request.request_type|replace('_', ' ') }} pending admin review.
+                <a href="{{ url_for('admin_face_requests') }}">Review request</a>
+            </div>
+        {% endif %}
         <div class="detail-list" style="margin-top: 20px;">
             <div class="detail-row"><span class="muted">Email</span><strong>{{ student.email }}</strong></div>
             <div class="detail-row"><span class="muted">Role</span><strong>{{ student.role|title }}</strong></div>

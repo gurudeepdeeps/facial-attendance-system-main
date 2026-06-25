@@ -32,8 +32,8 @@
                 <article class="auth-card">
                     <h2>Student sign in</h2>
                     <p class="muted">Access attendance and your monthly summary.</p>
-                    {% if error %}
-                        <div class="message message-error">{{ error }}</div>
+                    {% if student_error %}
+                        <div class="message message-error">{{ student_error }}</div>
                     {% endif %}
                     <form method="POST">
                         <input type="hidden" name="login_type" value="student">
@@ -60,6 +60,9 @@
                 <article class="auth-card">
                     <h2>Administrator</h2>
                     <p class="muted">Manage approvals, policy reports, and alerts.</p>
+                    {% if admin_error %}
+                        <div class="message message-error">{{ admin_error }}</div>
+                    {% endif %}
                     <form method="POST">
                         <input type="hidden" name="login_type" value="admin">
                         <div class="field">

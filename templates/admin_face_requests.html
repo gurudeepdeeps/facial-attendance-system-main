@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Face Requests | FaceTrack{% endblock %}
+{% block page_name %}Face Requests{% endblock %}
+{% block page_subtitle %}Approve first-time registrations and face updates{% endblock %}
+{% block navigation %}
+<nav class="nav-pills" style="margin-bottom: 16px;">
+    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Overview</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_pending_approvals') }}">Pending</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_approved_students') }}">Approved</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_rejected_students') }}">Rejected</a>
+    <a class="btn btn-primary" href="{{ url_for('admin_face_requests') }}">Face requests</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_search_students') }}">Search</a>
+</nav>
+{% endblock %}
+{% block content %}
+<main class="layout">
+    <section class="panel">
+        <div class="panel-title">
+            <div><h2>Pending face approvals</h2><p>{{ face_requests|length }} request(s)</p></div>
+        </div>
+        {% if face_requests %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Face</th><th>Student</th><th>Request</th><th>Submitted</th><th>Actions</th></tr></thead>
+                <tbody>
+                {% for request in face_requests %}
+                    <tr>
+                        <td><img class="face-thumb" src="{{ request[8] }}" alt="{{ request[2] }}"></td>
+                        <td><strong>{{ request[2] }}</strong><div class="muted">@{{ request[3] }} | {{ request[4] }}</div></td>
+                        <td><span class="badge badge-neutral">{{ request[6]|replace('_', ' ')|title }}</span></td>
+                        <td>{{ request[7][:19] }}</td>
+                        <td>
+                            <div class="actions">
+                                <button class="btn-small btn-secondary" type="button" onclick='openImageModal({{ request[8]|tojson }}, {{ request[2]|tojson }})'>View</button>
+                                <button class="btn-small btn-approve" onclick="reviewFace({{ request[0] }}, 'approve')">Approve</button>
+                                <button class="btn-small btn-reject" onclick="reviewFace({{ request[0] }}, 'reject')">Reject</button>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="empty-state">No face registrations or updates are waiting for approval.</div>
+        {% endif %}
+    </section>
+</main>
+
+<div id="imageModal" class="modal-backdrop" hidden>
+    <div class="image-modal" role="dialog" aria-modal="true" aria-labelledby="imageModalTitle">
+        <div class="modal-header">
+            <h2 id="imageModalTitle">Face image</h2>
+            <button class="btn-small btn-secondary" type="button" onclick="closeImageModal()">Close</button>
+        </div>
+        <img id="modalFaceImage" class="modal-image" src="" alt="">
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const imageModal = document.getElementById('imageModal');
+const modalFaceImage = document.getElementById('modalFaceImage');
+const imageModalTitle = document.getElementById('imageModalTitle');
+
+function openImageModal(src, name) {
+    modalFaceImage.src = src;
+    modalFaceImage.alt = `${name} face image`;
+    imageModalTitle.textContent = `${name} face image`;
+    imageModal.hidden = false;
+}
+
+function closeImageModal() {
+    imageModal.hidden = true;
+    modalFaceImage.src = '';
+}
+
+imageModal.addEventListener('click', (event) => {
+    if (event.target === imageModal) closeImageModal();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !imageModal.hidden) closeImageModal();
+});
+
+async function reviewFace(id, action) {
+    if (!confirm(`${action === 'approve' ? 'Approve' : 'Reject'} this face request?`)) return;
+    const response = await fetch(`/admin_${action}_face_request/${id}`, {method: 'POST'});
+    const result = await response.json();
+    if (result.success) location.reload();
+    else alert(result.message || 'Action failed.');
+}
+</script>
+{% endblock %}

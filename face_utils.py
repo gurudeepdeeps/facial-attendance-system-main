@@ -59,6 +59,54 @@ def save_face_encoding(user_id, image_path):
     except Exception as e:
         return False, f"Error processing image: {str(e)}"
 
+def submit_face_approval_request(user_id, image_path, request_type):
+    """Extract a face encoding and queue it for admin approval."""
+    try:
+        image = face_recognition.load_image_file(image_path)
+        face_encodings = face_recognition.face_encodings(image)
+
+        if len(face_encodings) == 0:
+            return False, "No face detected in the image"
+
+        if len(face_encodings) > 1:
+            return False, "Multiple faces detected. Please use an image with only one face"
+
+        encoding_blob = pickle.dumps(face_encodings[0])
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT image_path
+            FROM face_approval_requests
+            WHERE user_id = ? AND status = 'pending'
+        ''', (user_id,))
+        old_pending_paths = [row[0] for row in cursor.fetchall()]
+
+        cursor.execute('''
+            UPDATE face_approval_requests
+            SET status = 'superseded', reviewed_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND status = 'pending'
+        ''', (user_id,))
+
+        cursor.execute('''
+            INSERT INTO face_approval_requests (user_id, encoding, image_path, request_type)
+            VALUES (?, ?, ?, ?)
+        ''', (user_id, encoding_blob, image_path, request_type))
+        conn.commit()
+        conn.close()
+
+        for old_path in old_pending_paths:
+            if old_path and old_path != image_path and os.path.exists(old_path):
+                try:
+                    os.remove(old_path)
+                except OSError:
+                    pass
+
+        return True, "Face submitted for admin approval"
+
+    except Exception as e:
+        return False, f"Error processing image: {str(e)}"
+
 def get_all_face_encodings(force_reload=False):
     """Get all face encodings from database"""
     global _face_encoding_cache
