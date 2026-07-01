@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Parent Accounts | FaceTrack{% endblock %}
+{% block page_name %}Parent Accounts{% endblock %}
+{% block page_subtitle %}Create, update, link, unlink, and delete parent access{% endblock %}
+{% block navigation %}
+<nav class="nav-pills" style="margin-bottom: 16px;">
+    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Overview</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_pending_approvals') }}">Pending</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_approved_students') }}">Approved</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_rejected_students') }}">Rejected</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_face_requests') }}">Face requests</a>
+    <a class="btn btn-primary" href="{{ url_for('admin_parents') }}">Parents</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_search_students') }}">Search</a>
+</nav>
+{% endblock %}
+{% block content %}
+<main class="layout">
+    <section class="panel panel-md">
+        <div class="panel-title">
+            <div><h2>Create parent</h2><p>Add a read-only parent portal account.</p></div>
+        </div>
+        {% if message %}<div class="message message-success">{{ message }}</div>{% endif %}
+        {% if error %}<div class="message message-error">{{ error }}</div>{% endif %}
+        <form method="POST" class="admin-form-grid">
+            <input type="hidden" name="action" value="create_parent">
+            <div class="field">
+                <label for="full_name">Full name</label>
+                <input id="full_name" name="full_name" required>
+            </div>
+            <div class="field">
+                <label for="email">Email</label>
+                <input id="email" type="email" name="email" required>
+            </div>
+            <div class="field">
+                <label for="username">Username</label>
+                <input id="username" name="username" required>
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input id="password" type="password" name="password" required>
+            </div>
+            <div class="field">
+                <label for="student_id">Optional student link</label>
+                <select id="student_id" name="student_id">
+                    <option value="">Create without linking</option>
+                    {% for student in students %}
+                        <option value="{{ student[0] }}">{{ student[2] }} (@{{ student[1] }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label for="relationship">Relationship</label>
+                <input id="relationship" name="relationship" value="Parent">
+            </div>
+            <div class="field admin-form-action">
+                <button class="btn btn-success" type="submit">Create parent</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel panel-md">
+        <div class="panel-title">
+            <div><h2>Link student</h2><p>Attach an approved student to a parent portal.</p></div>
+        </div>
+        <form method="POST" class="admin-form-grid">
+            <input type="hidden" name="action" value="link_parent">
+            <div class="field">
+                <label for="parent_id">Parent</label>
+                <select id="parent_id" name="parent_id" required>
+                    <option value="">Choose parent</option>
+                    {% for parent in parents %}
+                        <option value="{{ parent[0] }}">{{ parent[2] }} (@{{ parent[1] }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label for="link_student_id">Student</label>
+                <select id="link_student_id" name="student_id" required>
+                    <option value="">Choose approved student</option>
+                    {% for student in students %}
+                        <option value="{{ student[0] }}">{{ student[2] }} (@{{ student[1] }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label for="link_relationship">Relationship</label>
+                <input id="link_relationship" name="relationship" value="Parent">
+            </div>
+            <div class="field admin-form-action">
+                <button class="btn btn-primary" type="submit">Link student</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-title">
+            <div><h2>Parent accounts</h2><p>{{ parents|length }} account(s)</p></div>
+        </div>
+        {% if parents %}
+        <div class="table-wrap">
+            <table class="admin-crud-table">
+                <thead>
+                    <tr><th>Parent</th><th>Contact</th><th>Password reset</th><th>Students</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for parent in parents %}
+                    <tr>
+                        <td>
+                            <form id="update-parent-{{ parent[0] }}" method="POST" class="table-form">
+                                <input type="hidden" name="action" value="update_parent">
+                                <input type="hidden" name="parent_id" value="{{ parent[0] }}">
+                                <input name="full_name" value="{{ parent[2] }}" aria-label="Parent full name" required>
+                                <input name="username" value="{{ parent[1] }}" aria-label="Parent username" required>
+                            </form>
+                        </td>
+                        <td>
+                            <input form="update-parent-{{ parent[0] }}" type="email" name="email" value="{{ parent[3] }}" aria-label="Parent email" required>
+                            <div class="muted">Created {{ parent[4][:10] }}</div>
+                        </td>
+                        <td>
+                            <input form="update-parent-{{ parent[0] }}" type="password" name="password" placeholder="Leave unchanged" aria-label="New password">
+                        </td>
+                        <td><span class="badge badge-neutral">{{ parent[5] }} linked</span></td>
+                        <td>
+                            <div class="button-row">
+                                <button class="btn-small btn-approve" form="update-parent-{{ parent[0] }}" type="submit">Save</button>
+                                <form method="POST" onsubmit="return confirm('Delete this parent account and all student links?');">
+                                    <input type="hidden" name="action" value="delete_parent">
+                                    <input type="hidden" name="parent_id" value="{{ parent[0] }}">
+                                    <button class="btn-small btn-delete" type="submit">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="empty-state">No parent accounts yet.</div>
+        {% endif %}
+    </section>
+
+    <section class="panel">
+        <div class="panel-title">
+            <div><h2>Student links</h2><p>{{ parent_links|length }} active relationship(s)</p></div>
+        </div>
+        {% if parent_links %}
+        <div class="table-wrap">
+            <table class="admin-crud-table">
+                <thead>
+                    <tr><th>Parent</th><th>Student</th><th>Relationship</th><th>Linked</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for link in parent_links %}
+                    <tr>
+                        <td><strong>{{ link[2] }}</strong><div class="muted">@{{ link[3] }}</div></td>
+                        <td><strong>{{ link[5] }}</strong><div class="muted">@{{ link[6] }}</div></td>
+                        <td>
+                            <form id="update-link-{{ link[0] }}" method="POST">
+                                <input type="hidden" name="action" value="update_link">
+                                <input type="hidden" name="link_id" value="{{ link[0] }}">
+                                <input name="relationship" value="{{ link[7] }}" aria-label="Relationship" required>
+                            </form>
+                        </td>
+                        <td>{{ link[8][:10] }}</td>
+                        <td>
+                            <div class="button-row">
+                                <button class="btn-small btn-approve" form="update-link-{{ link[0] }}" type="submit">Save</button>
+                                <form method="POST" onsubmit="return confirm('Unlink this student from the parent account?');">
+                                    <input type="hidden" name="action" value="unlink_student">
+                                    <input type="hidden" name="link_id" value="{{ link[0] }}">
+                                    <button class="btn-small btn-reject" type="submit">Unlink</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="empty-state">No student links yet.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

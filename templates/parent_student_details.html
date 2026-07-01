@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ student.full_name }} | Parent Portal{% endblock %}
+{% block page_name %}Student Details{% endblock %}
+{% block page_subtitle %}Read-only parent view of profile and attendance{% endblock %}
+{% block top_actions %}
+    <a class="btn btn-secondary" href="{{ url_for('parent_dashboard') }}">Back to portal</a>
+    <a class="btn btn-secondary" href="{{ url_for('logout') }}">Sign out</a>
+{% endblock %}
+
+{% block content %}
+<main class="layout">
+    <section class="panel panel-sm">
+        <div class="profile-head">
+            {% if student.face_image_url %}
+                <img class="face-thumb" src="{{ student.face_image_url }}" alt="{{ student.full_name }}">
+            {% else %}
+                <span class="face-placeholder">{{ student.full_name[0] }}</span>
+            {% endif %}
+            <div><h2 style="margin: 0;">{{ student.full_name }}</h2><p class="muted">@{{ student.username }}</p></div>
+        </div>
+        <div class="status-line">
+            <span class="badge badge-{{ student.status }}">{{ student.status }}</span>
+            {% if pending_face_request %}
+                <span class="badge badge-warning">Face approval pending</span>
+            {% elif student.face_image_url %}
+                <span class="badge badge-success">Face registered</span>
+            {% else %}
+                <span class="badge badge-danger">Face required</span>
+            {% endif %}
+        </div>
+        <div class="detail-list" style="margin-top: 20px;">
+            <div class="detail-row"><span class="muted">Email</span><strong>{{ student.email }}</strong></div>
+            <div class="detail-row"><span class="muted">Registered</span><strong>{{ student.created_at[:10] }}</strong></div>
+            <div class="detail-row"><span class="muted">Reporting time</span><strong>{{ attendance_settings.reporting_time }}</strong></div>
+        </div>
+    </section>
+
+    <section class="panel panel-lg">
+        <div class="panel-title">
+            <div><h2>{{ attendance_summary.month }} summary</h2><p>Policy threshold: {{ attendance_summary.threshold }}%</p></div>
+            <span class="badge {{ 'badge-low' if attendance_summary.is_low else 'badge-success' }}">{{ attendance_summary.percentage }}%</span>
+        </div>
+        <div class="metric-grid">
+            <div class="metric"><span>Present</span><strong>{{ attendance_summary.present_days }}</strong></div>
+            <div class="metric"><span>Late</span><strong>{{ attendance_summary.late_days }}</strong></div>
+            <div class="metric"><span>Absent</span><strong>{{ attendance_summary.absent_days }}</strong></div>
+            <div class="metric"><span>Completed</span><strong>{{ attendance_summary.completed_days }}</strong></div>
+        </div>
+        <div style="margin-top: 16px;">
+            <div class="progress" aria-label="Attendance percentage">
+                <span style="width: {{ [attendance_summary.percentage, 100]|min }}%;"></span>
+            </div>
+            <p class="muted">{{ attendance_summary.present_days }} of {{ attendance_summary.working_days }} configured working days recorded.</p>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-title"><div><h2>Today</h2><p>Current attendance lifecycle</p></div></div>
+        {% if today_record %}
+            <div class="metric-grid">
+                <div class="metric"><span>Status</span><strong style="font-size: 1.2rem;">{{ today_record.status|replace('_', ' ')|title }}</strong></div>
+                <div class="metric"><span>Check-in</span><strong style="font-size: 1.1rem;">{{ today_record.check_in_time[11:19] if today_record.check_in_time else '-' }}</strong></div>
+                <div class="metric"><span>Check-out</span><strong style="font-size: 1.1rem;">{{ today_record.check_out_time[11:19] if today_record.check_out_time else 'Pending' }}</strong></div>
+                <div class="metric"><span>Lifecycle</span><strong style="font-size: 1.1rem;">{{ 'Complete' if today_record.check_out_time else 'Active' }}</strong></div>
+            </div>
+        {% else %}
+            <div class="empty-state">No check-in has been recorded today.</div>
+        {% endif %}
+    </section>
+
+    <section class="panel">
+        <div class="panel-title"><div><h2>Attendance history</h2><p>Recent check-in and check-out records</p></div></div>
+        {% if attendance_records %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Date</th><th>Check-in</th><th>Check-out</th><th>Status</th><th>Check-in confidence</th></tr></thead>
+                <tbody>
+                {% for record in attendance_records %}
+                    <tr>
+                        <td>{{ record[0] }}</td>
+                        <td>{{ record[1][11:19] if record[1] else '-' }}</td>
+                        <td>{{ record[2][11:19] if record[2] else 'Pending' }}</td>
+                        <td><span class="badge badge-{{ record[3] }}">{{ record[3]|replace('_', ' ') }}</span></td>
+                        <td>{{ '%.2f'|format(record[4] or 0) }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="empty-state">No attendance records are available for this student.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

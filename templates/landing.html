@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deeps Institute of Technology</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="college-page college-v2">
+    <header class="college-v2-nav">
+        <a class="college-v2-brand" href="{{ url_for('index') }}">
+            <span>DIT</span>
+            <strong>Deeps Institute of Technology</strong>
+        </a>
+        <nav class="college-v2-links" aria-label="Primary navigation">
+            <a href="#programs">Programs</a>
+            <a href="#experience">Experience</a>
+            <a href="#platform">Platform</a>
+            <a class="college-v2-login" href="{{ url_for('portal') }}">Portal</a>
+        </nav>
+    </header>
+
+    <main>
+        <section class="college-v2-hero" style="background-image: linear-gradient(90deg, rgba(7, 18, 36, 0.92), rgba(7, 18, 36, 0.62) 48%, rgba(7, 18, 36, 0.10)), url('{{ url_for('static', filename='images/deeps-campus-hero.png') }}');">
+            <div class="college-v2-inner">
+                <div class="college-v2-copy">
+                    <p class="college-v2-kicker">Engineering college for practical innovators</p>
+                    <h1>Deeps Institute of Technology</h1>
+                    <p>Build technical confidence through modern labs, guided projects, face-enabled attendance, and transparent parent-student academic tracking.</p>
+                    <div class="college-v2-actions">
+                        <a class="btn btn-primary" href="{{ url_for('registration') }}">Start Admission</a>
+                        <a class="btn btn-secondary" href="{{ url_for('login') }}">Login to Portal</a>
+                    </div>
+                </div>
+                <aside class="college-v2-panel" aria-label="Campus system highlights">
+                    <span>Smart Campus Layer</span>
+                    <strong>Attendance, approvals, reports, and parent visibility in one connected system.</strong>
+                    <div>
+                        <p><b>Live</b> student attendance lifecycle</p>
+                        <p><b>Admin</b> approvals and reports</p>
+                        <p><b>Parent</b> complete student tracking</p>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
+        <section class="college-v2-stats" aria-label="College strengths">
+            <div><strong>01</strong><span>Project-first engineering culture</span></div>
+            <div><strong>02</strong><span>Digital attendance and analytics</span></div>
+            <div><strong>03</strong><span>Parent visibility for student progress</span></div>
+            <div><strong>04</strong><span>Career-focused technical practice</span></div>
+        </section>
+
+        <section id="programs" class="college-v2-section">
+            <div class="college-v2-heading">
+                <p>Academic Tracks</p>
+                <h2>Programs designed for building, testing, and presenting real work.</h2>
+            </div>
+            <div class="college-v2-programs">
+                <article>
+                    <span>CS</span>
+                    <h3>Computer Science</h3>
+                    <p>Software engineering, AI foundations, data workflows, cloud systems, and full-stack applications.</p>
+                </article>
+                <article>
+                    <span>EC</span>
+                    <h3>Electronics</h3>
+                    <p>Embedded systems, communication networks, IoT labs, digital circuits, and instrumentation practice.</p>
+                </article>
+                <article>
+                    <span>AS</span>
+                    <h3>Applied Sciences</h3>
+                    <p>Mathematics, physics, communication, and professional foundations for engineering confidence.</p>
+                </article>
+            </div>
+        </section>
+
+        <section id="experience" class="college-v2-experience">
+            <div class="college-v2-heading">
+                <p>Campus Experience</p>
+                <h2>A disciplined campus rhythm that keeps students visible and supported.</h2>
+            </div>
+            <div class="college-v2-timeline">
+                <div><span>08:45</span><strong>Face check-in</strong><p>Students begin the day with secure attendance capture.</p></div>
+                <div><span>10:30</span><strong>Lab sprint</strong><p>Hands-on sessions convert theory into working prototypes.</p></div>
+                <div><span>14:00</span><strong>Mentor review</strong><p>Faculty track progress before performance gaps widen.</p></div>
+                <div><span>17:15</span><strong>Parent insight</strong><p>Linked parents can review attendance and student details.</p></div>
+            </div>
+        </section>
+
+        <section id="platform" class="college-v2-section college-v2-platform">
+            <div class="college-v2-heading">
+                <p>Digital Platform</p>
+                <h2>One portal for students, parents, and administrators.</h2>
+            </div>
+            <div class="college-v2-platform-grid">
+                <article><h3>Student Portal</h3><p>Attendance status, face registration, monthly summary, and history.</p></article>
+                <article><h3>Parent Portal</h3><p>Complete linked-student view with profile, attendance, and low-attendance signals.</p></article>
+                <article><h3>Admin Console</h3><p>Approvals, parent CRUD, policy settings, student search, and CSV reports.</p></article>
+            </div>
+        </section>
+    </main>
+</body>
+</html>
