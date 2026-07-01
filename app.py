@@ -18,7 +18,11 @@ from database import (init_db, verify_user, create_user, save_attendance, get_us
                      get_user_attendance_summary, get_monthly_attendance_report,
                      get_low_attendance_students, update_attendance_settings,
                      get_pending_face_requests, get_pending_face_request_for_user,
-                     count_pending_face_requests, approve_face_request, reject_face_request)
+                     count_pending_face_requests, approve_face_request, reject_face_request,
+                     create_parent_user, link_parent_to_student, get_parent_accounts,
+                     get_parent_students, parent_can_access_student, get_parent_links,
+                     update_parent_user, delete_parent_user, update_parent_student_link,
+                     unlink_parent_student)
 from face_utils import (submit_face_approval_request, recognize_faces_in_frame,
                         has_face_registered, allowed_file, clear_face_encoding_cache)
 
@@ -124,13 +128,26 @@ def student_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def parent_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or session.get('role') != 'parent':
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route('/')
 def index():
+    return render_template('landing.html')
+
+@app.route('/portal')
+def portal():
     if 'user_id' in session:
         if session.get('role') == 'admin':
             return redirect(url_for('admin_dashboard'))
-        else:
-            return redirect(url_for('dashboard'))
+        if session.get('role') == 'parent':
+            return redirect(url_for('parent_dashboard'))
+        return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -138,24 +155,27 @@ def login():
     if request.method == 'POST':
         username = request.form['username'].strip()
         password = request.form['password']
-        login_type = request.form.get('login_type', 'student')  # 'admin' or student panel
+        login_type = request.form.get('login_type', 'student')
         is_student_login = login_type == 'student'
-        error_key = 'student_error' if is_student_login else 'admin_error'
+        is_parent_login = login_type == 'parent'
+        error_key = f'{login_type}_error' if login_type in ('student', 'admin', 'parent') else 'student_error'
         
         user = verify_user(username, password)
         if user:
             # Check if login type matches user role
             if login_type == 'admin' and user['role'] != 'admin':
-                return render_template('login.html', **{error_key: 'Invalid admin credentials. Please use student login.'})
+                return render_template('login.html', **{error_key: 'Invalid admin credentials. Please use the correct login panel.'})
+            if is_parent_login and user['role'] != 'parent':
+                return render_template('login.html', **{error_key: 'Invalid parent credentials. Please use the correct login panel.'})
             if is_student_login and user['role'] != 'student':
-                return render_template('login.html', **{error_key: 'Invalid student credentials. Please use admin login.'})
+                return render_template('login.html', **{error_key: 'Invalid student credentials. Please use the correct login panel.'})
             
-            if is_student_login:
-                # Check student approval status
+            if is_student_login or is_parent_login:
+                # Check approval status for student and parent accounts.
                 if user['status'] == 'pending':
                     return render_template('login.html', **{error_key: 'Your account is waiting for admin approval. Please try again later.'})
                 elif user['status'] == 'rejected':
-                    return render_template('login.html', **{error_key: 'Your registration has been rejected by admin. Please contact support.'})
+                    return render_template('login.html', **{error_key: 'Your account has been rejected by admin. Please contact support.'})
                 elif user['status'] != 'approved':
                     return render_template('login.html', **{error_key: 'Your account status is invalid.'})
             
@@ -168,8 +188,9 @@ def login():
             
             if user['role'] == 'admin':
                 return redirect(url_for('admin_dashboard'))
-            else:
-                return redirect(url_for('dashboard'))
+            if user['role'] == 'parent':
+                return redirect(url_for('parent_dashboard'))
+            return redirect(url_for('dashboard'))
         else:
             return render_template('login.html', **{error_key: 'Invalid credentials'})
     
@@ -339,6 +360,122 @@ def admin_search_students():
     else:
         students = []
     return render_template('admin_search_results.html', students=students, search_term=search_term)
+
+@app.route('/admin_parents', methods=['GET', 'POST'])
+@admin_required
+def admin_parents():
+    message = None
+    error = None
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        try:
+            if action == 'create_parent':
+                username = request.form.get('username', '').strip()
+                password = request.form.get('password', '')
+                full_name = request.form.get('full_name', '').strip()
+                email = request.form.get('email', '').strip()
+                student_id = request.form.get('student_id', '').strip()
+                relationship = request.form.get('relationship', 'Parent').strip() or 'Parent'
+
+                if not username or not password or not full_name or not email:
+                    error = 'Enter parent name, email, username, and password.'
+                else:
+                    parent_id = create_parent_user(username, password, full_name, email)
+                    if not parent_id:
+                        error = 'Username or email already exists.'
+                    elif student_id:
+                        success, link_message = link_parent_to_student(parent_id, int(student_id), relationship)
+                        message = link_message if success else 'Parent created, but student link failed: ' + link_message
+                    else:
+                        message = 'Parent account created successfully.'
+            elif action == 'update_parent':
+                parent_id = int(request.form.get('parent_id', '0'))
+                username = request.form.get('username', '').strip()
+                full_name = request.form.get('full_name', '').strip()
+                email = request.form.get('email', '').strip()
+                password = request.form.get('password', '')
+
+                if not username or not full_name or not email:
+                    error = 'Parent name, email, and username are required.'
+                else:
+                    success, result_message = update_parent_user(parent_id, username, full_name, email, password or None)
+                    message = result_message if success else None
+                    error = result_message if not success else None
+            elif action == 'delete_parent':
+                parent_id = int(request.form.get('parent_id', '0'))
+                success, result_message = delete_parent_user(parent_id)
+                message = result_message if success else None
+                error = result_message if not success else None
+            elif action == 'link_parent':
+                parent_id = request.form.get('parent_id', '').strip()
+                student_id = request.form.get('student_id', '').strip()
+                relationship = request.form.get('relationship', 'Parent').strip() or 'Parent'
+
+                if not parent_id or not student_id:
+                    error = 'Choose both a parent and a student.'
+                else:
+                    success, link_message = link_parent_to_student(int(parent_id), int(student_id), relationship)
+                    message = link_message if success else None
+                    error = link_message if not success else None
+            elif action == 'update_link':
+                link_id = int(request.form.get('link_id', '0'))
+                relationship = request.form.get('relationship', 'Parent').strip() or 'Parent'
+                success, result_message = update_parent_student_link(link_id, relationship)
+                message = result_message if success else None
+                error = result_message if not success else None
+            elif action == 'unlink_student':
+                link_id = int(request.form.get('link_id', '0'))
+                success, result_message = unlink_parent_student(link_id)
+                message = result_message if success else None
+                error = result_message if not success else None
+        except ValueError:
+            error = 'Invalid parent or student selection.'
+
+    parents = get_parent_accounts()
+    parent_links = get_parent_links()
+    students = get_approved_students()
+    return render_template('admin_parents.html',
+                           parents=parents,
+                           parent_links=parent_links,
+                           students=students,
+                           message=message,
+                           error=error)
+
+# ==================== PARENT ROUTES ====================
+
+@app.route('/parent_dashboard')
+@parent_required
+def parent_dashboard():
+    students = get_parent_students(session['user_id'])
+    for student in students:
+        student['face_image_url'] = build_face_image_url(student.get('face_image_path'))
+    return render_template('parent_dashboard.html', students=students)
+
+@app.route('/parent_student/<int:student_id>')
+@parent_required
+def parent_student_details(student_id):
+    if not parent_can_access_student(session['user_id'], student_id):
+        return redirect(url_for('parent_dashboard'))
+
+    student = get_student_by_id(student_id)
+    if not student:
+        return redirect(url_for('parent_dashboard'))
+
+    student['face_image_url'] = build_face_image_url(student.get('face_image_path'))
+    pending_face_request = get_pending_face_request_for_user(student_id)
+    attendance_summary = get_user_attendance_summary(student_id)
+    attendance_records = get_user_attendance(student_id)
+    today_record = get_today_user_attendance(student_id)
+    return render_template('parent_student_details.html',
+                           student=student,
+                           pending_face_request=pending_face_request,
+                           attendance_summary=attendance_summary,
+                           attendance_records=attendance_records,
+                           today_record=today_record,
+                           attendance_settings=get_attendance_settings())
+
+# ==================== END PARENT ROUTES ====================
 
 @app.route('/admin_delete_student/<int:student_id>', methods=['POST'])
 @admin_required

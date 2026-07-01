@@ -58,6 +58,32 @@
                 </article>
 
                 <article class="auth-card">
+                    <h2>Parent sign in</h2>
+                    <p class="muted">Track linked student attendance and alerts.</p>
+                    {% if parent_error %}
+                        <div class="message message-error">{{ parent_error }}</div>
+                    {% endif %}
+                    <form method="POST">
+                        <input type="hidden" name="login_type" value="parent">
+                        <div class="field">
+                            <label for="parent-username">Parent username</label>
+                            <input id="parent-username" name="username" autocomplete="username" required>
+                        </div>
+                        <div class="field">
+                            <label for="parent-password">Password</label>
+                            <div class="password-wrap">
+                                <input id="parent-password" type="password" name="password" autocomplete="current-password" required>
+                                <button class="password-toggle" type="button" data-password-target="parent-password" aria-label="Show password">Show</button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <button class="btn btn-primary" type="submit" style="width: 100%;">Open parent portal</button>
+                        </div>
+                    </form>
+                    <p class="muted" style="margin-top: 16px;">Default demo login: <strong>parent / parent123</strong></p>
+                </article>
+
+                <article class="auth-card">
                     <h2>Administrator</h2>
                     <p class="muted">Manage approvals, policy reports, and alerts.</p>
                     {% if admin_error %}

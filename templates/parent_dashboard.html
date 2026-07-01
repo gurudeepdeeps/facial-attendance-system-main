@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Parent Portal | FaceTrack{% endblock %}
+{% block page_name %}Parent Portal{% endblock %}
+{% block page_subtitle %}Linked student attendance and alerts{% endblock %}
+
+{% block content %}
+<main class="layout">
+    <section class="panel">
+        <div class="panel-title">
+            <div>
+                <h2>Linked students</h2>
+                <p>{{ students|length }} student(s) available in your portal</p>
+            </div>
+        </div>
+        {% if students %}
+            <div class="student-card-grid">
+                {% for student in students %}
+                <article class="student-card">
+                    <div class="profile-head">
+                        {% if student.face_image_url %}
+                            <img class="face-thumb" src="{{ student.face_image_url }}" alt="{{ student.full_name }}">
+                        {% else %}
+                            <span class="face-placeholder">{{ student.full_name[0] }}</span>
+                        {% endif %}
+                        <div>
+                            <h2>{{ student.full_name }}</h2>
+                            <p class="muted">@{{ student.username }} · {{ student.relationship }}</p>
+                        </div>
+                    </div>
+                    <div class="status-line">
+                        <span class="badge badge-{{ student.status }}">{{ student.status }}</span>
+                        {% if student.today_record %}
+                            <span class="badge badge-{{ student.today_record.status }}">{{ student.today_record.status|replace('_', ' ') }}</span>
+                        {% else %}
+                            <span class="badge badge-neutral">Not checked in</span>
+                        {% endif %}
+                        {% if student.summary.is_low %}
+                            <span class="badge badge-low">Low attendance</span>
+                        {% else %}
+                            <span class="badge badge-success">On track</span>
+                        {% endif %}
+                    </div>
+                    <div class="metric-grid metric-grid-compact">
+                        <div class="metric"><span>Attendance</span><strong>{{ student.summary.percentage }}%</strong></div>
+                        <div class="metric"><span>Present</span><strong>{{ student.summary.present_days }}</strong></div>
+                        <div class="metric"><span>Late</span><strong>{{ student.summary.late_days }}</strong></div>
+                        <div class="metric"><span>Completed</span><strong>{{ student.summary.completed_days }}</strong></div>
+                    </div>
+                    <div class="button-row" style="margin-top: 18px;">
+                        <a class="btn btn-primary" href="{{ url_for('parent_student_details', student_id=student.id) }}">View complete details</a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">No students are linked to this parent account yet. Ask the administrator to link a student.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

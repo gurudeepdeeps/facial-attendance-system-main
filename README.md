@@ -13,9 +13,10 @@ A Flask-based facial attendance platform for colleges with student approval, fac
 - Automatic on-time or late classification
 - Monthly attendance percentage and absence calculation
 - Low-attendance alerts based on an admin-defined threshold
+- Parent portal for read-only linked student tracking
 - Admin-defined reporting time and monthly working days
 - CSV attendance report export
-- Redesigned student and admin interfaces
+- Redesigned student, parent, and admin interfaces
 
 ## Requirements
 
@@ -60,15 +61,26 @@ The app creates a default admin user on first run:
 
 Use this account to approve pending students in the Admin Dashboard.
 
+## Default Parent Account
+
+The app also creates a demo parent user on first run:
+
+- Username: parent
+- Password: parent123
+
+Admins can create, edit, delete, link, and unlink parent accounts from **Admin Console > Parents**.
+
 ## Typical Workflow
 
 1. Student registers on the Registration page.
 2. Admin approves the student in the Admin Dashboard.
-3. Student logs in and uploads a clear front-facing photo in Register Face.
-4. Student checks in using live face verification.
-5. The system classifies the check-in as on time or late.
-6. The next successful scan records check-out.
-7. Additional scans on the same day are blocked as duplicates.
+3. Admin creates or links a parent account from the Parents page when parent tracking is needed.
+4. Student logs in and uploads a clear front-facing photo in Register Face.
+5. Student checks in using live face verification.
+6. The system classifies the check-in as on time or late.
+7. The next successful scan records check-out.
+8. Parent logs in to view linked student profile details, today's attendance, monthly summary, and attendance history.
+9. Additional scans on the same day are blocked as duplicates.
 
 ## Attendance Policy
 

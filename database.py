@@ -128,6 +128,19 @@ def init_db():
             DEFAULT_SETTINGS['low_attendance_threshold'],
             DEFAULT_SETTINGS['working_days_per_month'],
         ))
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS parent_students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_id INTEGER NOT NULL,
+            student_id INTEGER NOT NULL,
+            relationship TEXT DEFAULT 'Parent',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(parent_id, student_id),
+            FOREIGN KEY (parent_id) REFERENCES users (id),
+            FOREIGN KEY (student_id) REFERENCES users (id)
+        )
+    ''')
     
     conn.commit()
     
@@ -139,6 +152,15 @@ def init_db():
             INSERT INTO users (username, password_hash, full_name, email, role, status)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', ('admin', admin_password_hash, 'System Administrator', 'admin@attendance.system', 'admin', 'approved'))
+        conn.commit()
+
+    cursor.execute('SELECT COUNT(*) FROM users WHERE role = ?', ('parent',))
+    if cursor.fetchone()[0] == 0:
+        parent_password_hash = hash_password('parent123')
+        cursor.execute('''
+            INSERT INTO users (username, password_hash, full_name, email, role, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', ('parent', parent_password_hash, 'Demo Parent', 'parent@attendance.system', 'parent', 'approved'))
         conn.commit()
     
     conn.close()
@@ -192,6 +214,216 @@ def create_user(username, password, full_name, email):
     except sqlite3.IntegrityError:
         conn.close()
         return None
+
+def create_parent_user(username, password, full_name, email):
+    """Create an approved parent account."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    password_hash = hash_password(password)
+
+    try:
+        cursor.execute('''
+            INSERT INTO users (username, password_hash, full_name, email, role, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (username, password_hash, full_name, email, 'parent', 'approved'))
+        parent_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return parent_id
+    except sqlite3.IntegrityError:
+        conn.close()
+        return None
+
+def update_parent_user(parent_id, username, full_name, email, password=None):
+    """Update parent account details, optionally changing the password."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT role FROM users WHERE id = ?', (parent_id,))
+    parent = cursor.fetchone()
+    if not parent or parent[0] != 'parent':
+        conn.close()
+        return False, 'Parent account not found'
+
+    try:
+        if password:
+            cursor.execute('''
+                UPDATE users
+                SET username = ?, full_name = ?, email = ?, password_hash = ?
+                WHERE id = ? AND role = 'parent'
+            ''', (username, full_name, email, hash_password(password), parent_id))
+        else:
+            cursor.execute('''
+                UPDATE users
+                SET username = ?, full_name = ?, email = ?
+                WHERE id = ? AND role = 'parent'
+            ''', (username, full_name, email, parent_id))
+        conn.commit()
+        conn.close()
+        return True, 'Parent account updated successfully'
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False, 'Username or email already exists'
+
+def delete_parent_user(parent_id):
+    """Delete a parent account and its student links."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT role FROM users WHERE id = ?', (parent_id,))
+    parent = cursor.fetchone()
+    if not parent or parent[0] != 'parent':
+        conn.close()
+        return False, 'Parent account not found'
+
+    cursor.execute('DELETE FROM parent_students WHERE parent_id = ?', (parent_id,))
+    cursor.execute('DELETE FROM users WHERE id = ? AND role = ?', (parent_id, 'parent'))
+    conn.commit()
+    conn.close()
+    return True, 'Parent account deleted successfully'
+
+def link_parent_to_student(parent_id, student_id, relationship='Parent'):
+    """Link one parent account to one approved student."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT role, status FROM users WHERE id = ?', (parent_id,))
+    parent = cursor.fetchone()
+    cursor.execute('SELECT role, status FROM users WHERE id = ?', (student_id,))
+    student = cursor.fetchone()
+
+    if not parent or parent[0] != 'parent':
+        conn.close()
+        return False, 'Parent account not found'
+    if not student or student[0] != 'student' or student[1] != 'approved':
+        conn.close()
+        return False, 'Approved student not found'
+
+    try:
+        cursor.execute('''
+            INSERT INTO parent_students (parent_id, student_id, relationship)
+            VALUES (?, ?, ?)
+        ''', (parent_id, student_id, relationship or 'Parent'))
+        conn.commit()
+        conn.close()
+        return True, 'Parent linked to student successfully'
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False, 'This parent is already linked to that student'
+
+def update_parent_student_link(link_id, relationship):
+    """Update the relationship label for a parent-student link."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE parent_students
+        SET relationship = ?
+        WHERE id = ?
+    ''', (relationship or 'Parent', link_id))
+    changed = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return (True, 'Relationship updated successfully') if changed else (False, 'Parent-student link not found')
+
+def unlink_parent_student(link_id):
+    """Remove a student from a parent account."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM parent_students WHERE id = ?', (link_id,))
+    changed = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return (True, 'Student unlinked successfully') if changed else (False, 'Parent-student link not found')
+
+def get_parent_accounts():
+    """Return parent accounts with linked student counts."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.id, u.username, u.full_name, u.email, u.created_at,
+               COUNT(ps.student_id) AS student_count
+        FROM users u
+        LEFT JOIN parent_students ps ON ps.parent_id = u.id
+        WHERE u.role = 'parent'
+        GROUP BY u.id
+        ORDER BY u.created_at DESC
+    ''')
+    records = cursor.fetchall()
+    conn.close()
+    return records
+
+def get_parent_links():
+    """Return parent-student links for admin management."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT ps.id, ps.parent_id, p.full_name, p.username,
+               ps.student_id, s.full_name, s.username,
+               ps.relationship, ps.created_at
+        FROM parent_students ps
+        JOIN users p ON p.id = ps.parent_id
+        JOIN users s ON s.id = ps.student_id
+        WHERE p.role = 'parent' AND s.role = 'student'
+        ORDER BY p.full_name, s.full_name
+    ''')
+    records = cursor.fetchall()
+    conn.close()
+    return records
+
+def get_parent_students(parent_id):
+    """Return students linked to one parent account."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.id, u.username, u.full_name, u.email, u.status, ps.relationship,
+               lf.image_path
+        FROM parent_students ps
+        JOIN users u ON u.id = ps.student_id
+        LEFT JOIN (
+            SELECT f.user_id, f.image_path
+            FROM face_encodings f
+            INNER JOIN (
+                SELECT user_id, MAX(id) AS max_id
+                FROM face_encodings
+                GROUP BY user_id
+            ) latest ON latest.max_id = f.id
+        ) lf ON lf.user_id = u.id
+        WHERE ps.parent_id = ? AND u.role = 'student'
+        ORDER BY u.full_name
+    ''', (parent_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    students = []
+    for row in rows:
+        summary = get_user_attendance_summary(row[0])
+        today_record = get_today_user_attendance(row[0])
+        students.append({
+            'id': row[0],
+            'username': row[1],
+            'full_name': row[2],
+            'email': row[3],
+            'status': row[4],
+            'relationship': row[5],
+            'face_image_path': row[6],
+            'summary': summary,
+            'today_record': today_record,
+        })
+    return students
+
+def parent_can_access_student(parent_id, student_id):
+    """Check whether a parent is linked to a student."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT COUNT(*)
+        FROM parent_students ps
+        JOIN users s ON s.id = ps.student_id
+        WHERE ps.parent_id = ? AND ps.student_id = ? AND s.role = 'student'
+    ''', (parent_id, student_id))
+    can_access = cursor.fetchone()[0] > 0
+    conn.close()
+    return can_access
 
 def get_attendance_settings():
     """Get attendance policy settings."""
@@ -903,6 +1135,7 @@ def delete_student(user_id):
     cursor.execute('DELETE FROM attendance WHERE user_id = ?', (user_id,))
     cursor.execute('DELETE FROM face_encodings WHERE user_id = ?', (user_id,))
     cursor.execute('DELETE FROM face_approval_requests WHERE user_id = ?', (user_id,))
+    cursor.execute('DELETE FROM parent_students WHERE student_id = ?', (user_id,))
     cursor.execute('DELETE FROM users WHERE id = ? AND role = ?', (user_id, 'student'))
     conn.commit()
     conn.close()
