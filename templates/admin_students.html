@@ -2,17 +2,7 @@
 {% block title %}{{ page_title }} | FaceTrack{% endblock %}
 {% block page_name %}{{ page_title }}{% endblock %}
 {% block page_subtitle %}{{ page_description }}{% endblock %}
-{% block navigation %}
-<nav class="nav-pills" style="margin-bottom: 16px;">
-    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Overview</a>
-    <a class="btn {{ 'btn-primary' if list_status == 'pending' else 'btn-secondary' }}" href="{{ url_for('admin_pending_approvals') }}">Pending</a>
-    <a class="btn {{ 'btn-primary' if list_status == 'approved' else 'btn-secondary' }}" href="{{ url_for('admin_approved_students') }}">Approved</a>
-    <a class="btn {{ 'btn-primary' if list_status == 'rejected' else 'btn-secondary' }}" href="{{ url_for('admin_rejected_students') }}">Rejected</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_face_requests') }}">Face requests</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_parents') }}">Parents</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_search_students') }}">Search</a>
-</nav>
-{% endblock %}
+
 {% block content %}
 <main class="layout">
     <section class="panel">

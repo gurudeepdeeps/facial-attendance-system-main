@@ -44,7 +44,7 @@
                         <div class="metric"><span>Attendance</span><strong>{{ student.summary.percentage }}%</strong></div>
                         <div class="metric"><span>Present</span><strong>{{ student.summary.present_days }}</strong></div>
                         <div class="metric"><span>Late</span><strong>{{ student.summary.late_days }}</strong></div>
-                        <div class="metric"><span>Completed</span><strong>{{ student.summary.completed_days }}</strong></div>
+                        <div class="metric"><span>Absent</span><strong>{{ student.summary.absent_days }}</strong></div>
                     </div>
                     <div class="button-row" style="margin-top: 18px;">
                         <a class="btn btn-primary" href="{{ url_for('parent_student_details', student_id=student.id) }}">View complete details</a>

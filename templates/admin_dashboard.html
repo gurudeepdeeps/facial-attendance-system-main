@@ -2,19 +2,6 @@
 {% block title %}Admin Console | FaceTrack{% endblock %}
 {% block page_name %}Admin Console{% endblock %}
 {% block page_subtitle %}Approvals, attendance policy, and analytics{% endblock %}
-{% block navigation %}
-<nav class="nav-pills" style="margin-bottom: 16px;">
-    <a class="btn btn-primary" href="{{ url_for('admin_dashboard') }}">Overview</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_pending_approvals') }}">Pending</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_approved_students') }}">Approved</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_rejected_students') }}">Rejected</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_face_requests') }}">Face requests</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_parents') }}">Parents</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_search_students') }}">Search</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_bulk_attendance') }}">Bulk Scan</a>
-    <a class="btn btn-success" href="{{ url_for('admin_export_attendance') }}">Export CSV</a>
-</nav>
-{% endblock %}
 
 {% block content %}
 <main class="layout">
@@ -94,12 +81,12 @@
         {% endif %}
     </section>
 
-    <section class="panel panel-md" style="grid-column: span 2;">
+    <section class="panel" style="grid-column: span 12;">
         <div class="panel-title">
             <div><h2>Attendance policy & system settings</h2><p>Configure Timing Rules, Geofencing Boundary, and SMTP Email credentials</p></div>
         </div>
         <form id="policyForm">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
                 <div>
                     <h3 style="margin-bottom: 12px; font-size: 0.95rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; color: var(--primary);">Timing & Threshold Rules</h3>
                     <div class="field">
@@ -112,7 +99,11 @@
                     </div>
                     <div class="field">
                         <label for="workingDays">Working days per month</label>
-                        <input id="workingDays" type="number" name="working_days_per_month" min="1" max="31" value="{{ attendance_settings.working_days_per_month }}" required style="width: 100%;">
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input id="workingDays" type="number" name="working_days_per_month" min="1" max="31" value="{{ attendance_settings.working_days_per_month }}" required style="flex-grow: 1;">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('workingDays').value = {{ calculated_working_days }}" style="min-height: 42px; margin: 0; white-space: nowrap; font-size: 0.85rem; padding: 0 12px;">Auto-fill ({{ calculated_working_days }} days)</button>
+                        </div>
+                        <p class="muted" style="margin-top: 4px; font-size: 0.76rem;">Click Auto-fill to calculate and load this month's days excluding Sundays automatically.</p>
                     </div>
                     
                     <h3 style="margin-top: 20px; margin-bottom: 12px; font-size: 0.95rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; color: var(--primary);">Geofencing (Campus Boundary Check)</h3>
@@ -120,13 +111,16 @@
                         <input id="geofencingEnabled" type="checkbox" name="geofencing_enabled" {% if attendance_settings.geofencing_enabled %}checked{% endif %} style="width: auto; cursor: pointer;">
                         <label for="geofencingEnabled" style="margin-bottom: 0; cursor: pointer;">Enable Geofencing restriction</label>
                     </div>
-                    <div class="field">
-                        <label for="collegeLat">Campus Latitude (e.g. 12.9716)</label>
-                        <input id="collegeLat" type="number" step="any" name="college_lat" value="{{ attendance_settings.college_lat }}" style="width: 100%;">
-                    </div>
-                    <div class="field">
-                        <label for="collegeLon">Campus Longitude (e.g. 77.5946)</label>
-                        <input id="collegeLon" type="number" step="any" name="college_lon" value="{{ attendance_settings.college_lon }}" style="width: 100%;">
+                    <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: flex-end; flex-wrap: wrap;">
+                        <div class="field" style="flex: 1; min-width: 140px; margin-bottom: 0;">
+                            <label for="collegeLat">Campus Latitude (e.g. 12.9716)</label>
+                            <input id="collegeLat" type="number" step="any" name="college_lat" value="{{ attendance_settings.college_lat }}" style="width: 100%;">
+                        </div>
+                        <div class="field" style="flex: 1; min-width: 140px; margin-bottom: 0;">
+                            <label for="collegeLon">Campus Longitude (e.g. 77.5946)</label>
+                            <input id="collegeLon" type="number" step="any" name="college_lon" value="{{ attendance_settings.college_lon }}" style="width: 100%;">
+                        </div>
+                        <button type="button" class="btn btn-secondary" onclick="detectCampusLocation(this)" style="min-height: 42px; margin: 0; white-space: nowrap; font-size: 0.85rem; padding: 0 12px;">Detect Location</button>
                     </div>
                     <div class="field">
                         <label for="geofencingRadius">Allowed Scan Radius (meters)</label>
@@ -167,7 +161,7 @@
 
     <section class="panel">
         <div class="panel-title">
-            <div><h2>Monthly attendance report</h2><p>Configured working days: {{ attendance_settings.working_days_per_month }}</p></div>
+            <div><h2>Monthly attendance report</h2><p>Working days: {% if monthly_report %}{{ monthly_report[0].working_days }}{% else %}{{ attendance_settings.working_days_per_month }}{% endif %} days</p></div>
             <a class="btn btn-success" href="{{ url_for('admin_export_attendance') }}">Download CSV</a>
         </div>
         {% if monthly_report %}
@@ -243,6 +237,36 @@ async function notifyStudents(studentId = null) {
     } catch (e) {
         notifyMessage.className = 'message message-error';
         notifyMessage.textContent = 'Failed to send notifications. Try again.';
+    }
+}
+
+function detectCampusLocation(btn) {
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Locating...";
+    
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                document.getElementById('collegeLat').value = position.coords.latitude.toFixed(6);
+                document.getElementById('collegeLon').value = position.coords.longitude.toFixed(6);
+                btn.textContent = "Success!";
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }, 1500);
+            },
+            (error) => {
+                alert("Could not fetch location: " + error.message + ". Please type coordinates manually or ensure location permissions are enabled.");
+                btn.disabled = false;
+                btn.textContent = originalText;
+            },
+            { enableHighAccuracy: true, timeout: 6000 }
+        );
+    } else {
+        alert("Your browser does not support location services.");
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 }
 

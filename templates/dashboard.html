@@ -40,15 +40,18 @@
                 <span class="badge badge-neutral">Not checked in</span>
             {% endif %}
         </div>
-        <div class="button-row" style="margin-top: 18px;">
+        <div class="button-row" style="margin-top: 18px; display: flex; flex-direction: column; gap: 8px;">
             {% if face_registered %}
-                <a class="btn btn-primary" href="{{ url_for('attendance') }}">
+                <a id="checkInLink" class="btn btn-primary" href="{{ url_for('attendance') }}" style="width: 100%;">
                     {% if not today_record %}Check in
                     {% elif not today_record.check_out_time %}Check out
                     {% else %}View completed day{% endif %}
                 </a>
             {% endif %}
-            <a class="btn btn-secondary" href="{{ url_for('register_face') }}">
+            <button id="dashboardLocationBtn" type="button" class="btn btn-secondary" style="width: 100%;">
+                Allow Location
+            </button>
+            <a class="btn btn-secondary" href="{{ url_for('register_face') }}" style="width: 100%;">
                 {% if pending_face_request %}Review pending face{% elif face_registered %}Update face{% else %}Register face{% endif %}
             </a>
         </div>
@@ -131,4 +134,105 @@
         {% endif %}
     </section>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const dashboardLocationBtn = document.getElementById('dashboardLocationBtn');
+
+    function checkPreAuthorization() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    if (dashboardLocationBtn) {
+                        dashboardLocationBtn.textContent = 'Location Services Active';
+                        dashboardLocationBtn.style.color = '#10b981'; // Green
+                        dashboardLocationBtn.style.borderColor = '#10b981';
+                        dashboardLocationBtn.style.background = 'rgba(16, 185, 129, 0.08)';
+                    }
+                    console.log("Dashboard: Location services pre-authorized.", position.coords.latitude, position.coords.longitude);
+                },
+                (error) => {
+                    console.warn("Dashboard: Location services not pre-authorized:", error.message);
+                },
+                { enableHighAccuracy: true, timeout: 6000 }
+            );
+        }
+    }
+
+    // Try pre-authorizing location immediately on load
+    checkPreAuthorization();
+
+    if (dashboardLocationBtn) {
+        dashboardLocationBtn.addEventListener('click', () => {
+            if (navigator.geolocation) {
+                dashboardLocationBtn.textContent = 'Requesting Permission...';
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        dashboardLocationBtn.textContent = 'Location Services Active';
+                        dashboardLocationBtn.style.color = '#10b981'; // Green
+                        dashboardLocationBtn.style.borderColor = '#10b981';
+                        dashboardLocationBtn.style.background = 'rgba(16, 185, 129, 0.08)';
+                        alert("Location access granted successfully!");
+                    },
+                    (error) => {
+                        dashboardLocationBtn.textContent = 'Location Access Blocked';
+                        dashboardLocationBtn.style.color = '#ef4444'; // Red
+                        dashboardLocationBtn.style.borderColor = '#ef4444';
+                        dashboardLocationBtn.style.background = 'rgba(239, 68, 68, 0.08)';
+                        
+                        let instructions = "Location access is blocked! Please click the Site Settings (lock icon) next to the website URL in your browser address bar, turn on Location access, and refresh the page.";
+                        if (error.code === error.PERMISSION_DENIED) {
+                            instructions = "Location permission was denied. Please click the lock/settings icon next to the website URL in the address bar, enable Location services, and refresh the page to proceed.";
+                        }
+                        alert(instructions);
+                    },
+                    { enableHighAccuracy: true, timeout: 6000 }
+                );
+            } else {
+                alert("Your browser does not support location services.");
+            }
+        });
+    }
+
+    // Intercept check-in clicks to verify location and handle Chrome/browser blocks
+    const checkInLink = document.getElementById('checkInLink');
+    if (checkInLink) {
+        checkInLink.addEventListener('click', (event) => {
+            // Check if student is performing check-in or check-out
+            {% if not today_record or not today_record.check_out_time %}
+            event.preventDefault();
+            const targetUrl = checkInLink.href;
+            
+            const originalText = checkInLink.innerHTML;
+            checkInLink.innerHTML = '<span class="spinner" style="border-left-color:#fff;"></span> Verifying Location...';
+            checkInLink.style.pointerEvents = 'none';
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        // Success: Redirect to scanner
+                        window.location.href = targetUrl;
+                    },
+                    (error) => {
+                        checkInLink.innerHTML = originalText;
+                        checkInLink.style.pointerEvents = 'auto';
+                        
+                        let instructions = "Location access is blocked! Please click the Site Settings (lock icon) next to the website URL in your browser address bar, turn on Location access, and refresh the page.";
+                        if (error.code === error.PERMISSION_DENIED) {
+                            instructions = "Location permission was denied. Please click the lock/settings icon next to the website URL in the address bar, enable Location services, and refresh the page to proceed.";
+                        }
+                        alert(instructions);
+                    },
+                    { enableHighAccuracy: true, timeout: 6000 }
+                );
+            } else {
+                checkInLink.innerHTML = originalText;
+                checkInLink.style.pointerEvents = 'auto';
+                alert("Your browser does not support location services.");
+            }
+            {% endif %}
+        });
+    }
+</script>
 {% endblock %}

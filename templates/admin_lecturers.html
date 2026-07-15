@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Lecturers Management | FaceTrack{% endblock %}
+{% block page_name %}Lecturer Accounts{% endblock %}
+{% block page_subtitle %}Add, update, and remove lecturer portal accounts{% endblock %}
+
+{% block content %}
+<main class="layout">
+    <section class="panel">
+        <div class="panel-title">
+            <div><h2>Create Lecturer</h2><p>Add a new lecturer account with scheduling and active session privileges.</p></div>
+        </div>
+        {% if message %}<div class="message message-success">{{ message }}</div>{% endif %}
+        {% if error %}<div class="message message-error">{{ error }}</div>{% endif %}
+        <form method="POST" class="admin-form-grid">
+            <input type="hidden" name="action" value="create_lecturer">
+            <div class="field">
+                <label for="full_name">Full name</label>
+                <input id="full_name" name="full_name" required placeholder="e.g. Dr. Jane Smith">
+            </div>
+            <div class="field">
+                <label for="email">Email</label>
+                <input id="email" type="email" name="email" required placeholder="e.g. janesmith@college.edu">
+            </div>
+            <div class="field">
+                <label for="username">Username</label>
+                <input id="username" name="username" required placeholder="e.g. lecturer_jane">
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input id="password" type="password" name="password" required placeholder="e.g. lecturer123">
+            </div>
+            <div class="field admin-form-action" style="grid-column: span 2;">
+                <button class="btn btn-success" type="submit" style="width: 100%;">Create Lecturer</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-title">
+            <div><h2>Lecturer Accounts</h2><p>{{ lecturers|length }} account(s) registered</p></div>
+        </div>
+        {% if lecturers %}
+        <div class="table-wrap">
+            <table class="admin-crud-table">
+                <thead>
+                    <tr><th>Lecturer Profile</th><th>Contact</th><th>Password Reset</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for lecturer in lecturers %}
+                    <tr>
+                        <td>
+                            <form id="update-lecturer-{{ lecturer.id }}" method="POST" class="table-form">
+                                <input type="hidden" name="action" value="update_lecturer">
+                                <input type="hidden" name="lecturer_id" value="{{ lecturer.id }}">
+                                <input name="full_name" value="{{ lecturer.full_name }}" aria-label="Lecturer full name" required>
+                                <input name="username" value="{{ lecturer.username }}" aria-label="Lecturer username" required>
+                            </form>
+                        </td>
+                        <td>
+                            <input form="update-lecturer-{{ lecturer.id }}" type="email" name="email" value="{{ lecturer.email }}" aria-label="Lecturer email" required>
+                        </td>
+                        <td>
+                            <input form="update-lecturer-{{ lecturer.id }}" type="password" name="password" placeholder="Leave unchanged" aria-label="New password">
+                        </td>
+                        <td>
+                            <div class="button-row">
+                                <button class="btn-small btn-approve" form="update-lecturer-{{ lecturer.id }}" type="submit">Save</button>
+                                <form method="POST" onsubmit="return confirm('Are you sure you want to delete this lecturer account? All their class sessions history will be deleted.');">
+                                    <input type="hidden" name="action" value="delete_lecturer">
+                                    <input type="hidden" name="lecturer_id" value="{{ lecturer.id }}">
+                                    <button class="btn-small btn-delete" type="submit">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="empty-state">No lecturers found in database.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

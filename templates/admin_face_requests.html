@@ -2,17 +2,7 @@
 {% block title %}Face Requests | FaceTrack{% endblock %}
 {% block page_name %}Face Requests{% endblock %}
 {% block page_subtitle %}Approve first-time registrations and face updates{% endblock %}
-{% block navigation %}
-<nav class="nav-pills" style="margin-bottom: 16px;">
-    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Overview</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_pending_approvals') }}">Pending</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_approved_students') }}">Approved</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_rejected_students') }}">Rejected</a>
-    <a class="btn btn-primary" href="{{ url_for('admin_face_requests') }}">Face requests</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_parents') }}">Parents</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_search_students') }}">Search</a>
-</nav>
-{% endblock %}
+
 {% block content %}
 <main class="layout">
     <section class="panel">

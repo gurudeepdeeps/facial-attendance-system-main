@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Subjects Management | FaceTrack{% endblock %}
+{% block page_name %}Subject Accounts{% endblock %}
+{% block page_subtitle %}Add, update, and delete class subjects{% endblock %}
+
+{% block content %}
+<main class="layout">
+    <section class="panel">
+        <div class="panel-title">
+            <div><h2>Create Subject</h2><p>Add a new class subject to the system.</p></div>
+        </div>
+        {% if message %}<div class="message message-success">{{ message }}</div>{% endif %}
+        {% if error %}<div class="message message-error">{{ error }}</div>{% endif %}
+        <form method="POST" class="admin-form-grid" style="grid-template-columns: 1fr;">
+            <input type="hidden" name="action" value="create_subject">
+            <div class="field">
+                <label for="name">Subject name</label>
+                <input id="name" name="name" required placeholder="e.g. Machine Learning">
+            </div>
+            <div class="field admin-form-action" style="margin-top: 10px;">
+                <button class="btn btn-success" type="submit" style="width: 100%;">Create Subject</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-title">
+            <div><h2>Subjects List</h2><p>{{ subjects|length }} subject(s) configured</p></div>
+        </div>
+        {% if subjects %}
+        <div class="table-wrap">
+            <table class="admin-crud-table">
+                <thead>
+                    <tr><th>Subject Name</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for subject in subjects %}
+                    <tr>
+                        <td>
+                            <form id="update-subject-{{ subject.id }}" method="POST" class="table-form">
+                                <input type="hidden" name="action" value="update_subject">
+                                <input type="hidden" name="subject_id" value="{{ subject.id }}">
+                                <input name="name" value="{{ subject.name }}" aria-label="Subject name" required>
+                            </form>
+                        </td>
+                        <td>
+                            <div class="button-row">
+                                <button class="btn-small btn-approve" form="update-subject-{{ subject.id }}" type="submit">Save</button>
+                                <form method="POST" onsubmit="return confirm('Are you sure you want to delete this subject?');">
+                                    <input type="hidden" name="action" value="delete_subject">
+                                    <input type="hidden" name="subject_id" value="{{ subject.id }}">
+                                    <button class="btn-small btn-delete" type="submit">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="empty-state">No subjects configured.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

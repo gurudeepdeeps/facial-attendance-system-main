@@ -193,21 +193,27 @@ def init_db():
             status TEXT DEFAULT 'open',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             closed_at TIMESTAMP,
+            latitude REAL,
+            longitude REAL,
             FOREIGN KEY (lecturer_id) REFERENCES users (id)
         )
     ''')
 
-    # Seed 4 lecturer accounts if not exists
-    for i in range(1, 5):
-        username = f"lecturer{i}"
-        cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', (username,))
-        if cursor.fetchone()[0] == 0:
-            pw_hash = hash_password('lecturer123')
-            cursor.execute('''
-                INSERT INTO users (username, password_hash, full_name, email, role, status)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (username, pw_hash, f"Lecturer {chr(64 + i)}", f"lecturer{i}@attendance.system", 'lecturer', 'approved'))
-            conn.commit()
+    ensure_column(cursor, 'attendance_sessions', 'latitude', 'REAL')
+    ensure_column(cursor, 'attendance_sessions', 'longitude', 'REAL')
+
+    # Clean up demo lecturers if they exist
+    cursor.execute("DELETE FROM users WHERE role = 'lecturer' AND username IN ('lecturer1', 'lecturer2', 'lecturer3', 'lecturer4')")
+    conn.commit()
+
+    # Create subjects table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        )
+    ''')
+    conn.commit()
     
     conn.close()
 
@@ -327,6 +333,96 @@ def delete_parent_user(parent_id):
     conn.commit()
     conn.close()
     return True, 'Parent account deleted successfully'
+
+def get_lecturers():
+    """Get all lecturer user accounts."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, username, full_name, email
+        FROM users
+        WHERE role = 'lecturer'
+        ORDER BY full_name ASC
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    
+    lecturers = []
+    for r in rows:
+        lecturers.append({
+            'id': r[0],
+            'username': r[1],
+            'full_name': r[2],
+            'email': r[3]
+        })
+    return lecturers
+
+def create_lecturer_user(username, password, full_name, email):
+    """Create an approved lecturer account."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    password_hash = hash_password(password)
+
+    try:
+        cursor.execute('''
+            INSERT INTO users (username, password_hash, full_name, email, role, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (username, password_hash, full_name, email, 'lecturer', 'approved'))
+        lecturer_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return lecturer_id
+    except sqlite3.IntegrityError:
+        conn.close()
+        return None
+
+def update_lecturer_user(lecturer_id, username, full_name, email, password=None):
+    """Update lecturer account details, optionally changing the password."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT role FROM users WHERE id = ?', (lecturer_id,))
+    user = cursor.fetchone()
+    if not user or user[0] != 'lecturer':
+        conn.close()
+        return False, 'Lecturer account not found'
+
+    try:
+        if password:
+            cursor.execute('''
+                UPDATE users
+                SET username = ?, full_name = ?, email = ?, password_hash = ?
+                WHERE id = ? AND role = 'lecturer'
+            ''', (username, full_name, email, hash_password(password), lecturer_id))
+        else:
+            cursor.execute('''
+                UPDATE users
+                SET username = ?, full_name = ?, email = ?
+                WHERE id = ? AND role = 'lecturer'
+            ''', (username, full_name, email, lecturer_id))
+        conn.commit()
+        conn.close()
+        return True, 'Lecturer account updated successfully'
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False, 'Username or email already exists'
+
+def delete_lecturer_user(lecturer_id):
+    """Delete a lecturer account and close their sessions."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT role FROM users WHERE id = ?', (lecturer_id,))
+    user = cursor.fetchone()
+    if not user or user[0] != 'lecturer':
+        conn.close()
+        return False, 'Lecturer account not found'
+
+    cursor.execute('DELETE FROM attendance_sessions WHERE lecturer_id = ?', (lecturer_id,))
+    cursor.execute('DELETE FROM users WHERE id = ? AND role = ?', (lecturer_id, 'lecturer'))
+    conn.commit()
+    conn.close()
+    return True, 'Lecturer account deleted successfully'
 
 def link_parent_to_student(parent_id, student_id, relationship='Parent'):
     """Link one parent account to one approved student."""
@@ -479,7 +575,8 @@ def get_attendance_settings():
     cursor.execute('''
         SELECT reporting_time, low_attendance_threshold, working_days_per_month,
                college_lat, college_lon, geofencing_radius, geofencing_enabled,
-               smtp_host, smtp_port, smtp_user, smtp_password, smtp_sender
+               smtp_host, smtp_port, smtp_user, smtp_password, smtp_sender,
+               updated_at
         FROM attendance_settings
         WHERE id = 1
     ''')
@@ -501,6 +598,46 @@ def get_attendance_settings():
             'smtp_password': '',
             'smtp_sender': ''
         }
+
+    # Automatically check if the month has changed to auto-calculate the new month's days
+    updated_at = row[12]
+    from datetime import date
+    current_month_str = date.today().strftime('%Y-%m')
+    updated_month_str = updated_at[:7] if updated_at else ''
+
+    if current_month_str != updated_month_str:
+        import calendar
+        today_dt = date.today()
+        y, m = today_dt.year, today_dt.month
+        end_day = calendar.monthrange(y, m)[1]
+        auto_working_days = 0
+        for day in range(1, end_day + 1):
+            if date(y, m, day).weekday() != 6:
+                auto_working_days += 1
+        
+        # Save auto calculated working days to database
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE attendance_settings
+            SET working_days_per_month = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = 1
+        ''', (auto_working_days,))
+        conn.commit()
+        conn.close()
+
+        # Re-fetch the updated row
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT reporting_time, low_attendance_threshold, working_days_per_month,
+                   college_lat, college_lon, geofencing_radius, geofencing_enabled,
+                   smtp_host, smtp_port, smtp_user, smtp_password, smtp_sender
+            FROM attendance_settings
+            WHERE id = 1
+        ''')
+        row = cursor.fetchone()
+        conn.close()
 
     return {
         'reporting_time': row[0],
@@ -1126,12 +1263,28 @@ def get_recent_attendance_details(limit=50):
 
 def get_user_attendance_summary(user_id, month=None):
     """Return monthly attendance policy summary for one user."""
+    from datetime import date
     month = month or date.today().strftime('%Y-%m')
     settings = get_attendance_settings()
+    
     import calendar
     try:
         y, m = [int(p) for p in month.split('-')]
-        working_days = calendar.monthrange(y, m)[1]
+        today_dt = date.today()
+        if y == today_dt.year and m == today_dt.month:
+            # Current month: calculate elapsed working days up to today (excluding Sundays)
+            working_days = 0
+            for day in range(1, today_dt.day + 1):
+                if date(y, m, day).weekday() != 6:
+                    working_days += 1
+        elif y > today_dt.year or (y == today_dt.year and m > today_dt.month):
+            working_days = 0
+        else:
+            end_day = calendar.monthrange(y, m)[1]
+            working_days = 0
+            for day in range(1, end_day + 1):
+                if date(y, m, day).weekday() != 6:
+                    working_days += 1
     except Exception:
         working_days = settings['working_days_per_month']
 
@@ -1167,12 +1320,28 @@ def get_user_attendance_summary(user_id, month=None):
 
 def get_monthly_attendance_report(month=None):
     """Return per-student monthly attendance report rows."""
+    from datetime import date
     month = month or date.today().strftime('%Y-%m')
     settings = get_attendance_settings()
+    
     import calendar
     try:
         y, m = [int(p) for p in month.split('-')]
-        working_days = calendar.monthrange(y, m)[1]
+        today_dt = date.today()
+        if y == today_dt.year and m == today_dt.month:
+            # Current month: calculate elapsed working days up to today (excluding Sundays)
+            working_days = 0
+            for day in range(1, today_dt.day + 1):
+                if date(y, m, day).weekday() != 6:
+                    working_days += 1
+        elif y > today_dt.year or (y == today_dt.year and m > today_dt.month):
+            working_days = 0
+        else:
+            end_day = calendar.monthrange(y, m)[1]
+            working_days = 0
+            for day in range(1, end_day + 1):
+                if date(y, m, day).weekday() != 6:
+                    working_days += 1
     except Exception:
         working_days = settings['working_days_per_month']
 
@@ -1270,7 +1439,7 @@ def delete_student(user_id):
 
     return True, 'Student deleted successfully'
 
-def create_attendance_session(lecturer_id, subject):
+def create_attendance_session(lecturer_id, subject, latitude=None, longitude=None):
     """Open a new attendance session for a subject."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -1282,9 +1451,9 @@ def create_attendance_session(lecturer_id, subject):
     ''', (subject,))
     
     cursor.execute('''
-        INSERT INTO attendance_sessions (lecturer_id, subject, status)
-        VALUES (?, ?, 'open')
-    ''', (lecturer_id, subject))
+        INSERT INTO attendance_sessions (lecturer_id, subject, status, latitude, longitude)
+        VALUES (?, ?, 'open', ?, ?)
+    ''', (lecturer_id, subject, latitude, longitude))
     
     session_id = cursor.lastrowid
     conn.commit()
@@ -1292,9 +1461,25 @@ def create_attendance_session(lecturer_id, subject):
     return session_id
 
 def close_attendance_session(session_id):
-    """Close an active attendance session."""
+    """Close an active attendance session and auto check-out all students who haven't checked out."""
     conn = get_connection()
     cursor = conn.cursor()
+
+    # Get the subject for this session so we can match attendance records
+    cursor.execute('SELECT subject FROM attendance_sessions WHERE id = ?', (session_id,))
+    row = cursor.fetchone()
+
+    if row:
+        subject = row[0]
+        # Auto check-out all students who checked in for this subject today but haven't checked out
+        cursor.execute('''
+            UPDATE attendance
+            SET check_out_time = DATETIME('now', 'localtime')
+            WHERE subject = ?
+              AND attendance_date = DATE('now', 'localtime')
+              AND check_out_time IS NULL
+        ''', (subject,))
+
     cursor.execute('''
         UPDATE attendance_sessions
         SET status = 'closed', closed_at = CURRENT_TIMESTAMP
@@ -1304,12 +1489,13 @@ def close_attendance_session(session_id):
     conn.close()
     return True
 
+
 def get_active_session_for_subject(subject):
     """Check if there is an active session for the given subject."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, lecturer_id, subject, created_at
+        SELECT id, lecturer_id, subject, created_at, latitude, longitude
         FROM attendance_sessions
         WHERE subject = ? AND status = 'open'
         ORDER BY id DESC
@@ -1322,7 +1508,9 @@ def get_active_session_for_subject(subject):
             'id': row[0],
             'lecturer_id': row[1],
             'subject': row[2],
-            'created_at': row[3]
+            'created_at': row[3],
+            'latitude': row[4],
+            'longitude': row[5]
         }
     return None
 
@@ -1400,3 +1588,60 @@ def get_session_attendance_details(session_id):
             'confidence': r[6]
         })
     return attendance
+
+def get_current_month_working_days():
+    """Return the number of days in the current calendar month excluding Sundays."""
+    from datetime import date
+    import calendar
+    today_dt = date.today()
+    y, m = today_dt.year, today_dt.month
+    end_day = calendar.monthrange(y, m)[1]
+    working_days = 0
+    for day in range(1, end_day + 1):
+        if date(y, m, day).weekday() != 6:
+            working_days += 1
+    return working_days
+
+def get_subjects():
+    """Get all subject accounts."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, name FROM subjects ORDER BY name ASC')
+    rows = cursor.fetchall()
+    conn.close()
+    return [{'id': r[0], 'name': r[1]} for r in rows]
+
+def create_subject(name):
+    """Add a new subject."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('INSERT INTO subjects (name) VALUES (?)', (name.strip(),))
+        conn.commit()
+        success = True
+    except sqlite3.IntegrityError:
+        success = False
+    conn.close()
+    return success
+
+def update_subject(subject_id, name):
+    """Update subject name."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('UPDATE subjects SET name = ? WHERE id = ?', (name.strip(), subject_id))
+        conn.commit()
+        success = True
+    except sqlite3.IntegrityError:
+        success = False
+    conn.close()
+    return success
+
+def delete_subject(subject_id):
+    """Delete a subject."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM subjects WHERE id = ?', (subject_id,))
+    conn.commit()
+    conn.close()
+    return True

@@ -27,7 +27,23 @@
                 {% endblock %}
             </div>
         </header>
-        {% block navigation %}{% endblock %}
+        {% block navigation %}
+            {% if session.role == 'admin' %}
+            <nav class="nav-pills" style="margin-bottom: 16px;">
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_dashboard' else 'btn-secondary' }}" href="{{ url_for('admin_dashboard') }}">Overview</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_pending_approvals' or request.endpoint == 'admin_pending_approvals' else 'btn-secondary' }}" href="{{ url_for('admin_pending_approvals') }}">Pending</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_approved_students' or request.endpoint == 'admin_approved_students' else 'btn-secondary' }}" href="{{ url_for('admin_approved_students') }}">Approved</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_rejected_students' or request.endpoint == 'admin_rejected_students' else 'btn-secondary' }}" href="{{ url_for('admin_rejected_students') }}">Rejected</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_face_requests' or request.endpoint == 'admin_face_requests' else 'btn-secondary' }}" href="{{ url_for('admin_face_requests') }}">Face requests</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_parents' or request.endpoint == 'admin_parents' else 'btn-secondary' }}" href="{{ url_for('admin_parents') }}">Parents</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_lecturers' or request.endpoint == 'admin_lecturers' else 'btn-secondary' }}" href="{{ url_for('admin_lecturers') }}">Lecturers</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_subjects' or request.endpoint == 'admin_subjects' else 'btn-secondary' }}" href="{{ url_for('admin_subjects') }}">Subjects</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_search_students' or request.endpoint == 'admin_search_students' else 'btn-secondary' }}" href="{{ url_for('admin_search_students') }}">Search</a>
+                <a class="btn {{ 'btn-primary' if request.path == '/admin_bulk_attendance' or request.endpoint == 'admin_bulk_attendance' else 'btn-secondary' }}" href="{{ url_for('admin_bulk_attendance') }}">Bulk Scan</a>
+                <a class="btn btn-success" href="{{ url_for('admin_export_attendance') }}">Export CSV</a>
+            </nav>
+            {% endif %}
+        {% endblock %}
         {% block content %}{% endblock %}
     </div>
     {% block scripts %}{% endblock %}

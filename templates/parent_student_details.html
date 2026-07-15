@@ -41,10 +41,10 @@
             <span class="badge {{ 'badge-low' if attendance_summary.is_low else 'badge-success' }}">{{ attendance_summary.percentage }}%</span>
         </div>
         <div class="metric-grid">
+            <div class="metric"><span>Attendance</span><strong>{{ attendance_summary.percentage }}%</strong></div>
             <div class="metric"><span>Present</span><strong>{{ attendance_summary.present_days }}</strong></div>
             <div class="metric"><span>Late</span><strong>{{ attendance_summary.late_days }}</strong></div>
             <div class="metric"><span>Absent</span><strong>{{ attendance_summary.absent_days }}</strong></div>
-            <div class="metric"><span>Completed</span><strong>{{ attendance_summary.completed_days }}</strong></div>
         </div>
         <div style="margin-top: 16px;">
             <div class="progress" aria-label="Attendance percentage">

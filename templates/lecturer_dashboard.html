@@ -9,7 +9,7 @@
 
 {% block content %}
 <main class="layout">
-    <section class="panel panel-lg">
+    <section class="panel">
         <div class="panel-title">
             <div>
                 <h2>Session Controller</h2>
@@ -34,15 +34,17 @@
         <form id="openSessionForm" style="margin-top: 20px;">
             <div style="margin-bottom: 16px;">
                 <label for="subjectSelect" style="display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.88rem; color: var(--text-muted);">Select Subject for Lecture</label>
-                <select id="subjectSelect" name="subject" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: #fff; font-size: 1rem;">
-                    <option value="Mathematics">Mathematics</option>
-                    <option value="Physics">Physics</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="Computer Science">Computer Science</option>
-                    <option value="English">English</option>
+                <select id="subjectSelect" name="subject" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: #fff; font-size: 1rem;" {% if not subjects %}disabled{% endif %}>
+                    {% if subjects %}
+                        {% for subject in subjects %}
+                            <option value="{{ subject.name }}">{{ subject.name }}</option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="">No subjects configured. Contact HOD/Admin.</option>
+                    {% endif %}
                 </select>
             </div>
-            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem;">Activate Attendance Session</button>
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem;" {% if not subjects %}disabled{% endif %}>Activate Attendance Session</button>
         </form>
         {% endif %}
 
@@ -50,7 +52,7 @@
     </section>
 
     <!-- Past Sessions List -->
-    <section class="panel panel-md" style="grid-column: span 2;">
+    <section class="panel">
         <div class="panel-title">
             <div>
                 <h2>Your Attendance Sessions</h2>
@@ -106,22 +108,44 @@
             e.preventDefault();
             const formData = new FormData(form);
             msg.className = 'message message-neutral';
-            msg.textContent = 'Opening session...';
+            msg.textContent = 'Acquiring classroom location coordinates...';
 
-            try {
-                const response = await fetch('{{ url_for("lecturer_open_session") }}', {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                msg.className = `message ${result.success ? 'message-success' : 'message-error'}`;
-                msg.textContent = result.message;
-                if (result.success) {
-                    setTimeout(() => location.reload(), 1200);
+            const submitSession = async () => {
+                try {
+                    const response = await fetch('{{ url_for("lecturer_open_session") }}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    msg.className = `message ${result.success ? 'message-success' : 'message-error'}`;
+                    msg.textContent = result.message;
+                    if (result.success) {
+                        setTimeout(() => location.reload(), 1200);
+                    }
+                } catch (err) {
+                    msg.className = 'message message-error';
+                    msg.textContent = 'Failed to open session. Try again.';
                 }
-            } catch (err) {
-                msg.className = 'message message-error';
-                msg.textContent = 'Failed to open session. Try again.';
+            };
+
+            // Request lecturer location to lock session to the classroom
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        formData.append('latitude', position.coords.latitude);
+                        formData.append('longitude', position.coords.longitude);
+                        msg.textContent = 'Classroom location acquired. Opening session...';
+                        submitSession();
+                    },
+                    (error) => {
+                        // Fallback to campus-wide settings if coordinates could not be retrieved
+                        msg.textContent = 'Classroom coordinates unavailable. Falling back to campus settings...';
+                        submitSession();
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            } else {
+                submitSession();
             }
         });
     }

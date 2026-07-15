@@ -23,7 +23,9 @@ from database import (init_db, verify_user, create_user, save_attendance, get_us
                      get_parent_students, parent_can_access_student, get_parent_links,
                      update_parent_user, delete_parent_user, update_parent_student_link,
                      unlink_parent_student, create_attendance_session, close_attendance_session,
-                     get_active_session_for_subject, get_lecturer_sessions, get_session_attendance_details, get_connection)
+                     get_active_session_for_subject, get_lecturer_sessions, get_session_attendance_details, get_connection, get_current_month_working_days,
+                     get_lecturers, create_lecturer_user, update_lecturer_user, delete_lecturer_user,
+                     get_subjects, create_subject, update_subject, delete_subject)
 from face_utils import (submit_face_approval_request, recognize_faces_in_frame,
                         has_face_registered, allowed_file, clear_face_encoding_cache,
                         calculate_ear, calculate_distance, recognize_multiple_faces)
@@ -285,7 +287,8 @@ def admin_dashboard():
                          monthly_report=monthly_report,
                          low_attendance_students=low_attendance_students,
                          pending_face_request_count=count_pending_face_requests(),
-                         attendance_settings=get_attendance_settings())
+                         attendance_settings=get_attendance_settings(),
+                         calculated_working_days=get_current_month_working_days())
 
 @app.route('/admin_face_requests')
 @admin_required
@@ -461,6 +464,103 @@ def admin_parents():
                            message=message,
                            error=error)
 
+@app.route('/admin_lecturers', methods=['GET', 'POST'])
+@admin_required
+def admin_lecturers():
+    message = None
+    error = None
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'create_lecturer':
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '')
+            full_name = request.form.get('full_name', '').strip()
+            email = request.form.get('email', '').strip()
+
+            if not username or not password or not full_name or not email:
+                error = 'Enter lecturer username, password, name, and email.'
+            else:
+                lecturer_id = create_lecturer_user(username, password, full_name, email)
+                if lecturer_id:
+                    message = 'Lecturer account created successfully.'
+                else:
+                    error = 'Username or email already exists.'
+        elif action == 'update_lecturer':
+            lecturer_id = request.form.get('lecturer_id', '').strip()
+            username = request.form.get('username', '').strip()
+            full_name = request.form.get('full_name', '').strip()
+            email = request.form.get('email', '').strip()
+            password = request.form.get('password', '')
+
+            if not lecturer_id or not username or not full_name or not email:
+                error = 'Lecturer ID, name, email, and username are required.'
+            else:
+                success, result_message = update_lecturer_user(int(lecturer_id), username, full_name, email, password or None)
+                if success:
+                    message = result_message
+                else:
+                    error = result_message
+        elif action == 'delete_lecturer':
+            lecturer_id = request.form.get('lecturer_id', '').strip()
+            if not lecturer_id:
+                error = 'Lecturer ID is required.'
+            else:
+                success, result_message = delete_lecturer_user(int(lecturer_id))
+                if success:
+                    message = result_message
+                else:
+                    error = result_message
+
+    lecturers = get_lecturers()
+    return render_template('admin_lecturers.html',
+                           lecturers=lecturers,
+                           message=message,
+                           error=error)
+
+@app.route('/admin_subjects', methods=['GET', 'POST'])
+@admin_required
+def admin_subjects():
+    message = None
+    error = None
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'create_subject':
+            name = request.form.get('name', '').strip()
+            if not name:
+                error = 'Subject name is required.'
+            else:
+                success = create_subject(name)
+                if success:
+                    message = 'Subject created successfully.'
+                else:
+                    error = 'Subject already exists.'
+        elif action == 'update_subject':
+            subject_id = request.form.get('subject_id', '').strip()
+            name = request.form.get('name', '').strip()
+            if not subject_id or not name:
+                error = 'Subject ID and name are required.'
+            else:
+                success = update_subject(int(subject_id), name)
+                if success:
+                    message = 'Subject updated successfully.'
+                else:
+                    error = 'Subject name already exists.'
+        elif action == 'delete_subject':
+            subject_id = request.form.get('subject_id', '').strip()
+            if not subject_id:
+                error = 'Subject ID is required.'
+            else:
+                delete_subject(int(subject_id))
+                message = 'Subject deleted successfully.'
+
+    subjects = get_subjects()
+    return render_template('admin_subjects.html',
+                           subjects=subjects,
+                           message=message,
+                           error=error)
+
 # ==================== PARENT ROUTES ====================
 
 @app.route('/parent_dashboard')
@@ -508,7 +608,8 @@ def lecturer_dashboard():
         if s['status'] == 'open':
             active_session = s
             break
-    return render_template('lecturer_dashboard.html', sessions=sessions, active_session=active_session)
+    subjects = get_subjects()
+    return render_template('lecturer_dashboard.html', sessions=sessions, active_session=active_session, subjects=subjects)
 
 @app.route('/lecturer_open_session', methods=['POST'])
 @lecturer_required
@@ -518,14 +619,25 @@ def lecturer_open_session():
     if not subject:
         return jsonify({'success': False, 'message': 'Subject is required.'}), 400
         
-    session_id = create_attendance_session(lecturer_id, subject)
+    lat_str = request.form.get('latitude')
+    lon_str = request.form.get('longitude')
+    lat = None
+    lon = None
+    if lat_str and lon_str:
+        try:
+            lat = float(lat_str)
+            lon = float(lon_str)
+        except ValueError:
+            pass
+            
+    session_id = create_attendance_session(lecturer_id, subject, lat, lon)
     return jsonify({'success': True, 'message': f'Attendance session for {subject} opened successfully!', 'session_id': session_id})
 
 @app.route('/lecturer_close_session/<int:session_id>', methods=['POST'])
 @lecturer_required
 def lecturer_close_session(session_id):
     close_attendance_session(session_id)
-    return jsonify({'success': True, 'message': 'Attendance session closed successfully.'})
+    return jsonify({'success': True, 'message': 'Session closed. All students who had not checked out have been automatically checked out.'})
 
 @app.route('/lecturer_session_details/<int:session_id>')
 @lecturer_required
@@ -830,7 +942,8 @@ def attendance():
     return render_template(
         'attendance.html',
         today_record=get_today_user_attendance(session['user_id']),
-        attendance_settings=get_attendance_settings()
+        attendance_settings=get_attendance_settings(),
+        subjects=get_subjects()
     )
 
 def generate_frames(mirror_preview=False, recognition_interval=5, jpeg_quality=75):
@@ -874,57 +987,26 @@ def generate_frames(mirror_preview=False, recognition_interval=5, jpeg_quality=7
             face_locations = local_face_locations
             face_data = local_face_data
 
-            rgb_frame = frame[:, :, ::-1]
-            try:
-                landmarks_list = face_recognition.face_landmarks(rgb_frame, face_locations)
-            except Exception:
-                landmarks_list = []
 
             for i, ((top, right, bottom, left), (name, user_data)) in enumerate(zip(face_locations, face_data)):
-                liveness_text = "Liveness: Checking..."
-                liveness_color = (0, 165, 255) # Orange
                 user_id = user_data[0]
-                
-                if user_id and i < len(landmarks_list):
-                    landmarks = landmarks_list[i]
-                    left_eye = landmarks.get('left_eye', [])
-                    right_eye = landmarks.get('right_eye', [])
-                    
-                    ear_left = calculate_ear(left_eye)
-                    ear_right = calculate_ear(right_eye)
-                    ear = (ear_left + ear_right) / 2.0
-                    
-                    if user_id not in liveness_tracker:
-                        liveness_tracker[user_id] = { 'blink_count': 0, 'last_state': 'open', 'verified': False }
-                    
-                    tracker = liveness_tracker[user_id]
-                    
-                    if ear < 0.22:
-                        current_state = 'closed'
-                    elif ear > 0.25:
-                        current_state = 'open'
-                    else:
-                        current_state = tracker['last_state']
-                        
-                    if current_state == 'open' and tracker['last_state'] == 'closed':
-                        tracker['blink_count'] += 1
-                        if tracker['blink_count'] >= 1:
-                            tracker['verified'] = True
-                            
-                    tracker['last_state'] = current_state
-                    
-                    if tracker['verified']:
-                        liveness_text = "Liveness: Verified"
-                        liveness_color = (0, 255, 0) # Green
-                    else:
-                        liveness_text = f"Blink to verify: {tracker['blink_count']}/1"
-                        liveness_color = (0, 0, 255) # Red
-                
-                cv2.rectangle(frame, (left, top), (right, bottom), liveness_color, 2)
-                cv2.rectangle(frame, (left, bottom - 40), (right, bottom), liveness_color, cv2.FILLED)
+                confidence = user_data[1]
+
+                # Simple presence-based liveness: face recognised → verified immediately
+                if user_id:
+                    liveness_tracker[user_id] = {'verified': True}
+                    box_color    = (0, 200, 80)   # Green
+                    status_label = "Face Verified"
+                else:
+                    box_color    = (0, 100, 255)  # Orange/red for unknown
+                    status_label = "Unknown Face"
+
+                cv2.rectangle(frame, (left, top), (right, bottom), box_color, 2)
+                cv2.rectangle(frame, (left, bottom - 40), (right, bottom), box_color, cv2.FILLED)
                 font = cv2.FONT_HERSHEY_DUPLEX
-                cv2.putText(frame, name, (left + 6, bottom - 22), font, 0.52, (255, 255, 255), 1)
-                cv2.putText(frame, liveness_text, (left + 6, bottom - 6), font, 0.45, (255, 255, 255), 1)
+                cv2.putText(frame, name,         (left + 6, bottom - 22), font, 0.52, (255, 255, 255), 1)
+                cv2.putText(frame, status_label, (left + 6, bottom - 6),  font, 0.45, (255, 255, 255), 1)
+
 
             ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
             if not ret:
@@ -995,9 +1077,15 @@ def mark_attendance():
         except ValueError:
             return jsonify({'success': False, 'message': 'Invalid location coordinates received.'})
             
-        dist = calculate_distance(student_lat, student_lon, settings['college_lat'], settings['college_lon'])
-        if dist > settings['geofencing_radius']:
-            return jsonify({'success': False, 'message': f'You are outside the campus boundary. Distance: {dist:.1f}m (Max: {settings["geofencing_radius"]}m)'})
+        # Classroom-level check if the active session has coordinates
+        if active_session.get('latitude') is not None and active_session.get('longitude') is not None:
+            dist = calculate_distance(student_lat, student_lon, active_session['latitude'], active_session['longitude'])
+            if dist > 10.0:  # Enforce strict 10 meters classroom boundary
+                return jsonify({'success': False, 'message': f'Attendance rejected. You must strictly mark attendance inside the classroom (Distance to class: {dist:.1f}m, Max allowed: 10m).'})
+        else:
+            dist = calculate_distance(student_lat, student_lon, settings['college_lat'], settings['college_lon'])
+            if dist > settings['geofencing_radius']:
+                return jsonify({'success': False, 'message': f'You are outside the campus boundary. Distance: {dist:.1f}m (Max: {settings["geofencing_radius"]}m)'})
 
     # 3. Face verification
     with frame_lock:
@@ -1049,9 +1137,15 @@ def mark_attendance_with_photo():
         except ValueError:
             return jsonify({'success': False, 'message': 'Invalid location coordinates received.'})
             
-        dist = calculate_distance(student_lat, student_lon, settings['college_lat'], settings['college_lon'])
-        if dist > settings['geofencing_radius']:
-            return jsonify({'success': False, 'message': f'You are outside the campus boundary. Distance: {dist:.1f}m (Max: {settings["geofencing_radius"]}m)'})
+        # Classroom-level check if the active session has coordinates
+        if active_session.get('latitude') is not None and active_session.get('longitude') is not None:
+            dist = calculate_distance(student_lat, student_lon, active_session['latitude'], active_session['longitude'])
+            if dist > 10.0:  # Enforce strict 10 meters classroom boundary
+                return jsonify({'success': False, 'message': f'Attendance rejected. You must strictly mark attendance inside the classroom (Distance to class: {dist:.1f}m, Max allowed: 10m).'})
+        else:
+            dist = calculate_distance(student_lat, student_lon, settings['college_lat'], settings['college_lon'])
+            if dist > settings['geofencing_radius']:
+                return jsonify({'success': False, 'message': f'You are outside the campus boundary. Distance: {dist:.1f}m (Max: {settings["geofencing_radius"]}m)'})
 
     if 'face_image' not in request.files:
         return jsonify({'success': False, 'message': 'No image provided'})

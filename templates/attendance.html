@@ -28,15 +28,26 @@
         </div>
         <div style="margin-top: 16px; margin-bottom: 16px;">
             <label for="subjectSelect" style="display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.88rem; color: var(--text-muted);">Select Subject / Lecture</label>
-            <select id="subjectSelect" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; font-size: 0.95rem;">
-                <option value="Mathematics" style="background:#222;">Mathematics</option>
-                <option value="Physics" style="background:#222;">Physics</option>
-                <option value="Chemistry" style="background:#222;">Chemistry</option>
-                <option value="Computer Science" style="background:#222;">Computer Science</option>
-                <option value="English" style="background:#222;">English</option>
+            <select id="subjectSelect" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; font-size: 0.95rem;" {% if not subjects %}disabled{% endif %}>
+                {% if subjects %}
+                    {% for subject in subjects %}
+                        <option value="{{ subject.name }}" style="background:#222;">{{ subject.name }}</option>
+                    {% endfor %}
+                {% else %}
+                    <option value="" style="background:#222;">No subjects available — contact admin</option>
+                {% endif %}
             </select>
         </div>
-        <div class="button-row" style="margin-top: 16px;">
+        
+        <div id="locationStatusContainer" style="margin-top: 16px; margin-bottom: 16px; padding: 14px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.12); display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+            <div>
+                <span style="font-size: 0.8rem; display: block; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Location Services</span>
+                <strong id="locationStatusText" style="color: var(--amber); font-size: 0.95rem;">Checking permission...</strong>
+            </div>
+            <button id="enableLocationBtn" type="button" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.82rem; margin: 0;">Allow/Refresh GPS</button>
+        </div>
+
+        <div class="button-row">
             <button id="markAttendanceBtn" class="btn btn-primary">
                 Verify face and mark attendance
             </button>
@@ -82,19 +93,62 @@
     let latitude = null;
     let longitude = null;
 
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                latitude = position.coords.latitude;
-                longitude = position.coords.longitude;
-                console.log("GPS Location acquired:", latitude, longitude);
-            },
-            (error) => {
-                console.warn("Location check warning:", error.message);
-            },
-            { enableHighAccuracy: true, timeout: 5000 }
-        );
+    const statusText = document.getElementById('locationStatusText');
+    const enableBtn = document.getElementById('enableLocationBtn');
+
+    function updateLocationUI(status, errorMsg = '') {
+        if (status === 'success') {
+            statusText.textContent = 'GPS Location Active';
+            statusText.style.color = 'var(--green)';
+            enableBtn.textContent = 'Refreshed';
+            enableBtn.disabled = true;
+        } else if (status === 'denied') {
+            statusText.textContent = 'Location Blocked';
+            statusText.style.color = 'var(--red)';
+            enableBtn.textContent = 'Allow Access';
+            enableBtn.disabled = false;
+        } else {
+            statusText.textContent = 'Not Acquired';
+            statusText.style.color = 'var(--amber)';
+            enableBtn.textContent = 'Allow/Refresh GPS';
+            enableBtn.disabled = false;
+        }
     }
+
+    function requestLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    latitude = position.coords.latitude;
+                    longitude = position.coords.longitude;
+                    console.log("GPS Location acquired:", latitude, longitude);
+                    updateLocationUI('success');
+                },
+                (error) => {
+                    console.warn("Location check warning:", error.message);
+                    if (error.code === error.PERMISSION_DENIED) {
+                        updateLocationUI('denied');
+                    } else {
+                        updateLocationUI('error');
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        } else {
+            statusText.textContent = 'Not Supported';
+            statusText.style.color = 'var(--red)';
+            enableBtn.style.display = 'none';
+        }
+    }
+
+    // Attempt automatically on load
+    requestLocation();
+
+    // Setup manual button trigger
+    enableBtn.addEventListener('click', () => {
+        statusText.textContent = 'Requesting GPS...';
+        requestLocation();
+    });
 
     const button = document.getElementById('markAttendanceBtn');
     const message = document.getElementById('attendanceMessage');
@@ -105,33 +159,64 @@
             const original = button.textContent;
             button.disabled = true;
             button.innerHTML = '<span class="spinner"></span> Verifying...';
-            
-            const formData = new FormData();
-            formData.append('subject', subjectSelect.value);
-            if (latitude !== null && longitude !== null) {
-                formData.append('latitude', latitude);
-                formData.append('longitude', longitude);
-            }
-            
-            try {
-                const response = await fetch('{{ url_for("mark_attendance") }}', {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                message.className = `message ${result.success ? 'message-success' : 'message-error'}`;
-                message.textContent = result.message;
-                if (result.success) {
-                    setTimeout(() => window.location.href = '{{ url_for("dashboard") }}', 2000);
-                } else {
+
+            const submitVerification = async () => {
+                const formData = new FormData();
+                formData.append('subject', subjectSelect.value);
+                if (latitude !== null && longitude !== null) {
+                    formData.append('latitude', latitude);
+                    formData.append('longitude', longitude);
+                }
+                
+                try {
+                    const response = await fetch('{{ url_for("mark_attendance") }}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    message.className = `message ${result.success ? 'message-success' : 'message-error'}`;
+                    message.textContent = result.message;
+                    if (result.success) {
+                        setTimeout(() => window.location.href = '{{ url_for("dashboard") }}', 2000);
+                    } else {
+                        button.disabled = false;
+                        button.textContent = original;
+                    }
+                } catch (error) {
+                    message.className = 'message message-error';
+                    message.textContent = 'Could not complete face verification. Please try again.';
                     button.disabled = false;
                     button.textContent = original;
                 }
-            } catch (error) {
-                message.className = 'message message-error';
-                message.textContent = 'Could not complete face verification. Please try again.';
-                button.disabled = false;
-                button.textContent = original;
+            };
+
+            // Enforce location access
+            if (latitude === null || longitude === null) {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            latitude = position.coords.latitude;
+                            longitude = position.coords.longitude;
+                            updateLocationUI('success');
+                            submitVerification();
+                        },
+                        (error) => {
+                            updateLocationUI('denied');
+                            message.className = 'message message-error';
+                            message.textContent = 'Location access is required by policy. Please click "Allow Access" to permit location tracking and try again.';
+                            button.disabled = false;
+                            button.textContent = original;
+                        },
+                        { enableHighAccuracy: true, timeout: 5000 }
+                    );
+                } else {
+                    message.className = 'message message-error';
+                    message.textContent = 'Your browser does not support location services.';
+                    button.disabled = false;
+                    button.textContent = original;
+                }
+            } else {
+                await submitVerification();
             }
         });
     }
