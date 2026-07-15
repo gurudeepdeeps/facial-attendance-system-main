@@ -26,11 +26,19 @@
         <div class="camera-box">
             <img id="videoFeed" src="{{ url_for('video_feed_register') }}" alt="Live camera feed">
         </div>
+        <div style="margin-top: 16px; margin-bottom: 16px;">
+            <label for="subjectSelect" style="display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.88rem; color: var(--text-muted);">Select Subject / Lecture</label>
+            <select id="subjectSelect" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; font-size: 0.95rem;">
+                <option value="Mathematics" style="background:#222;">Mathematics</option>
+                <option value="Physics" style="background:#222;">Physics</option>
+                <option value="Chemistry" style="background:#222;">Chemistry</option>
+                <option value="Computer Science" style="background:#222;">Computer Science</option>
+                <option value="English" style="background:#222;">English</option>
+            </select>
+        </div>
         <div class="button-row" style="margin-top: 16px;">
-            <button id="markAttendanceBtn" class="btn btn-primary" {% if today_record and today_record.check_out_time %}disabled{% endif %}>
-                {% if not today_record %}Verify face and check in
-                {% elif not today_record.check_out_time %}Verify face and check out
-                {% else %}Attendance completed{% endif %}
+            <button id="markAttendanceBtn" class="btn btn-primary">
+                Verify face and mark attendance
             </button>
         </div>
         <div id="attendanceMessage"></div>
@@ -46,19 +54,22 @@
         <div class="detail-list">
             <div class="detail-row"><span class="muted">Reporting time</span><strong>{{ attendance_settings.reporting_time }}</strong></div>
             <div class="detail-row"><span class="muted">Late rule</span><strong>After {{ attendance_settings.reporting_time }}</strong></div>
-            <div class="detail-row"><span class="muted">Daily records</span><strong>One lifecycle</strong></div>
+            <div class="detail-row"><span class="muted">Daily records</span><strong>Subject-wise lifecycle</strong></div>
             <div class="detail-row"><span class="muted">Minimum attendance</span><strong>{{ attendance_settings.low_attendance_threshold }}%</strong></div>
+            {% if attendance_settings.geofencing_enabled %}
+            <div class="detail-row"><span class="muted">Geofencing</span><strong style="color:var(--primary);">Active (within {{ attendance_settings.geofencing_radius }}m)</strong></div>
+            {% endif %}
         </div>
         <div style="margin-top: 22px;">
             <h3 class="section-title">For a reliable scan</h3>
-            <p class="muted">Use good lighting, face the camera directly, remove face coverings, and ensure nobody else is visible.</p>
+            <p class="muted">Use good lighting, face the camera directly, blink your eyes to prove liveness, and verify geolocation permission is allowed.</p>
         </div>
         {% if today_record %}
         <div style="margin-top: 22px;">
-            <h3 class="section-title">Today's record</h3>
+            <h3 class="section-title">Recent scan today</h3>
             <div class="status-line">
                 <span class="badge badge-{{ today_record.status }}">{{ today_record.status|replace('_', ' ') }}</span>
-                <span class="badge badge-neutral">{{ 'Complete' if today_record.check_out_time else 'Checked in' }}</span>
+                <span class="badge badge-neutral">{{ today_record.subject }}</span>
             </div>
         </div>
         {% endif %}
@@ -68,20 +79,50 @@
 
 {% block scripts %}
 <script>
+    let latitude = null;
+    let longitude = null;
+
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                latitude = position.coords.latitude;
+                longitude = position.coords.longitude;
+                console.log("GPS Location acquired:", latitude, longitude);
+            },
+            (error) => {
+                console.warn("Location check warning:", error.message);
+            },
+            { enableHighAccuracy: true, timeout: 5000 }
+        );
+    }
+
     const button = document.getElementById('markAttendanceBtn');
     const message = document.getElementById('attendanceMessage');
-    if (button && !button.disabled) {
+    const subjectSelect = document.getElementById('subjectSelect');
+
+    if (button) {
         button.addEventListener('click', async () => {
             const original = button.textContent;
             button.disabled = true;
             button.innerHTML = '<span class="spinner"></span> Verifying...';
+            
+            const formData = new FormData();
+            formData.append('subject', subjectSelect.value);
+            if (latitude !== null && longitude !== null) {
+                formData.append('latitude', latitude);
+                formData.append('longitude', longitude);
+            }
+            
             try {
-                const response = await fetch('{{ url_for("mark_attendance") }}', {method: 'POST'});
+                const response = await fetch('{{ url_for("mark_attendance") }}', {
+                    method: 'POST',
+                    body: formData
+                });
                 const result = await response.json();
                 message.className = `message ${result.success ? 'message-success' : 'message-error'}`;
                 message.textContent = result.message;
                 if (result.success) {
-                    setTimeout(() => window.location.href = '{{ url_for("dashboard") }}', 1400);
+                    setTimeout(() => window.location.href = '{{ url_for("dashboard") }}', 2000);
                 } else {
                     button.disabled = false;
                     button.textContent = original;

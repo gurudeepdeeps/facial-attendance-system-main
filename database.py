@@ -91,6 +91,7 @@ def init_db():
     ensure_column(cursor, 'attendance', 'check_in_confidence', 'REAL')
     ensure_column(cursor, 'attendance', 'check_out_confidence', 'REAL')
     ensure_column(cursor, 'attendance', 'remarks', 'TEXT')
+    ensure_column(cursor, 'attendance', 'subject', "TEXT DEFAULT 'General'")
 
     cursor.execute('''
         UPDATE attendance
@@ -114,9 +115,29 @@ def init_db():
             reporting_time TEXT NOT NULL DEFAULT '09:15',
             low_attendance_threshold INTEGER NOT NULL DEFAULT 75,
             working_days_per_month INTEGER NOT NULL DEFAULT 22,
+            college_lat REAL DEFAULT 0.0,
+            college_lon REAL DEFAULT 0.0,
+            geofencing_radius REAL DEFAULT 150.0,
+            geofencing_enabled INTEGER DEFAULT 0,
+            smtp_host TEXT DEFAULT 'smtp.gmail.com',
+            smtp_port INTEGER DEFAULT 587,
+            smtp_user TEXT DEFAULT '',
+            smtp_password TEXT DEFAULT '',
+            smtp_sender TEXT DEFAULT '',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Add settings columns to existing attendance_settings if they aren't present
+    ensure_column(cursor, 'attendance_settings', 'college_lat', 'REAL DEFAULT 0.0')
+    ensure_column(cursor, 'attendance_settings', 'college_lon', 'REAL DEFAULT 0.0')
+    ensure_column(cursor, 'attendance_settings', 'geofencing_radius', 'REAL DEFAULT 150.0')
+    ensure_column(cursor, 'attendance_settings', 'geofencing_enabled', 'INTEGER DEFAULT 0')
+    ensure_column(cursor, 'attendance_settings', 'smtp_host', "TEXT DEFAULT 'smtp.gmail.com'")
+    ensure_column(cursor, 'attendance_settings', 'smtp_port', 'INTEGER DEFAULT 587')
+    ensure_column(cursor, 'attendance_settings', 'smtp_user', "TEXT DEFAULT ''")
+    ensure_column(cursor, 'attendance_settings', 'smtp_password', "TEXT DEFAULT ''")
+    ensure_column(cursor, 'attendance_settings', 'smtp_sender', "TEXT DEFAULT ''")
 
     cursor.execute('SELECT COUNT(*) FROM attendance_settings WHERE id = 1')
     if cursor.fetchone()[0] == 0:
@@ -162,6 +183,31 @@ def init_db():
             VALUES (?, ?, ?, ?, ?, ?)
         ''', ('parent', parent_password_hash, 'Demo Parent', 'parent@attendance.system', 'parent', 'approved'))
         conn.commit()
+
+    # Create attendance_sessions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS attendance_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lecturer_id INTEGER NOT NULL,
+            subject TEXT NOT NULL,
+            status TEXT DEFAULT 'open',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            closed_at TIMESTAMP,
+            FOREIGN KEY (lecturer_id) REFERENCES users (id)
+        )
+    ''')
+
+    # Seed 4 lecturer accounts if not exists
+    for i in range(1, 5):
+        username = f"lecturer{i}"
+        cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', (username,))
+        if cursor.fetchone()[0] == 0:
+            pw_hash = hash_password('lecturer123')
+            cursor.execute('''
+                INSERT INTO users (username, password_hash, full_name, email, role, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (username, pw_hash, f"Lecturer {chr(64 + i)}", f"lecturer{i}@attendance.system", 'lecturer', 'approved'))
+            conn.commit()
     
     conn.close()
 
@@ -431,7 +477,9 @@ def get_attendance_settings():
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT reporting_time, low_attendance_threshold, working_days_per_month
+        SELECT reporting_time, low_attendance_threshold, working_days_per_month,
+               college_lat, college_lon, geofencing_radius, geofencing_enabled,
+               smtp_host, smtp_port, smtp_user, smtp_password, smtp_sender
         FROM attendance_settings
         WHERE id = 1
     ''')
@@ -439,26 +487,74 @@ def get_attendance_settings():
     conn.close()
 
     if not row:
-        return DEFAULT_SETTINGS.copy()
+        return {
+            'reporting_time': '09:15',
+            'low_attendance_threshold': 75,
+            'working_days_per_month': 22,
+            'college_lat': 0.0,
+            'college_lon': 0.0,
+            'geofencing_radius': 150.0,
+            'geofencing_enabled': 0,
+            'smtp_host': 'smtp.gmail.com',
+            'smtp_port': 587,
+            'smtp_user': '',
+            'smtp_password': '',
+            'smtp_sender': ''
+        }
 
     return {
         'reporting_time': row[0],
         'low_attendance_threshold': row[1],
         'working_days_per_month': row[2],
+        'college_lat': row[3] if len(row) > 3 and row[3] is not None else 0.0,
+        'college_lon': row[4] if len(row) > 4 and row[4] is not None else 0.0,
+        'geofencing_radius': row[5] if len(row) > 5 and row[5] is not None else 150.0,
+        'geofencing_enabled': row[6] if len(row) > 6 and row[6] is not None else 0,
+        'smtp_host': row[7] if len(row) > 7 and row[7] is not None else 'smtp.gmail.com',
+        'smtp_port': row[8] if len(row) > 8 and row[8] is not None else 587,
+        'smtp_user': row[9] if len(row) > 9 and row[9] is not None else '',
+        'smtp_password': row[10] if len(row) > 10 and row[10] is not None else '',
+        'smtp_sender': row[11] if len(row) > 11 and row[11] is not None else '',
     }
 
-def update_attendance_settings(reporting_time, low_attendance_threshold, working_days_per_month):
+def update_attendance_settings(reporting_time, low_attendance_threshold, working_days_per_month,
+                               college_lat=None, college_lon=None, geofencing_radius=None, geofencing_enabled=None,
+                               smtp_host=None, smtp_port=None, smtp_user=None, smtp_password=None, smtp_sender=None):
     """Update the single attendance policy settings row."""
     conn = get_connection()
     cursor = conn.cursor()
+    
+    # Retrieve current settings to fallback
+    current = get_attendance_settings()
+    
+    c_lat = college_lat if college_lat is not None else current['college_lat']
+    c_lon = college_lon if college_lon is not None else current['college_lon']
+    g_rad = geofencing_radius if geofencing_radius is not None else current['geofencing_radius']
+    g_enb = geofencing_enabled if geofencing_enabled is not None else current['geofencing_enabled']
+    s_host = smtp_host if smtp_host is not None else current['smtp_host']
+    s_port = smtp_port if smtp_port is not None else current['smtp_port']
+    s_user = smtp_user if smtp_user is not None else current['smtp_user']
+    s_pass = smtp_password if smtp_password is not None else current['smtp_password']
+    s_send = smtp_sender if smtp_sender is not None else current['smtp_sender']
+
     cursor.execute('''
         UPDATE attendance_settings
         SET reporting_time = ?,
             low_attendance_threshold = ?,
             working_days_per_month = ?,
+            college_lat = ?,
+            college_lon = ?,
+            geofencing_radius = ?,
+            geofencing_enabled = ?,
+            smtp_host = ?,
+            smtp_port = ?,
+            smtp_user = ?,
+            smtp_password = ?,
+            smtp_sender = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
-    ''', (reporting_time, low_attendance_threshold, working_days_per_month))
+    ''', (reporting_time, low_attendance_threshold, working_days_per_month,
+          c_lat, c_lon, g_rad, g_enb, s_host, s_port, s_user, s_pass, s_send))
     conn.commit()
     conn.close()
 
@@ -470,18 +566,28 @@ def classify_attendance(now=None):
     reporting_time = now.replace(hour=reporting_hour, minute=reporting_minute, second=0, microsecond=0)
     return 'on_time' if now <= reporting_time else 'late'
 
-def get_today_user_attendance(user_id):
+def get_today_user_attendance(user_id, subject=None):
     """Get today's attendance lifecycle row for a user."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, attendance_date, datetime(check_in_time, 'localtime'), datetime(check_out_time, 'localtime'),
-               status, check_in_confidence, check_out_confidence
-        FROM attendance
-        WHERE user_id = ? AND attendance_date = DATE('now', 'localtime')
-        ORDER BY id DESC
-        LIMIT 1
-    ''', (user_id,))
+    if subject:
+        cursor.execute('''
+            SELECT id, attendance_date, datetime(check_in_time, 'localtime'), datetime(check_out_time, 'localtime'),
+                   status, check_in_confidence, check_out_confidence, subject
+            FROM attendance
+            WHERE user_id = ? AND attendance_date = DATE('now', 'localtime') AND subject = ?
+            ORDER BY id DESC
+            LIMIT 1
+        ''', (user_id, subject))
+    else:
+        cursor.execute('''
+            SELECT id, attendance_date, datetime(check_in_time, 'localtime'), datetime(check_out_time, 'localtime'),
+                   status, check_in_confidence, check_out_confidence, subject
+            FROM attendance
+            WHERE user_id = ? AND attendance_date = DATE('now', 'localtime')
+            ORDER BY id DESC
+            LIMIT 1
+        ''', (user_id,))
     row = cursor.fetchone()
     conn.close()
 
@@ -496,9 +602,10 @@ def get_today_user_attendance(user_id):
         'status': row[4],
         'check_in_confidence': row[5],
         'check_out_confidence': row[6],
+        'subject': row[7] if len(row) > 7 else 'General',
     }
 
-def save_attendance(user_id, confidence):
+def save_attendance(user_id, confidence, subject="General"):
     """Save a policy-aware check-in or check-out attendance record."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -510,10 +617,10 @@ def save_attendance(user_id, confidence):
     cursor.execute('''
         SELECT id, check_out_time, status
         FROM attendance
-        WHERE user_id = ? AND attendance_date = ?
+        WHERE user_id = ? AND attendance_date = ? AND subject = ?
         ORDER BY id DESC
         LIMIT 1
-    ''', (user_id, today_text))
+    ''', (user_id, today_text, subject))
     existing = cursor.fetchone()
 
     if existing and existing[1]:
@@ -521,7 +628,7 @@ def save_attendance(user_id, confidence):
         return {
             'success': False,
             'action': 'complete',
-            'message': 'Attendance already completed for today. Check-in and check-out are both recorded.'
+            'message': f'Attendance already completed for today for subject {subject}. Check-in and check-out are both recorded.'
         }
 
     if existing:
@@ -536,19 +643,19 @@ def save_attendance(user_id, confidence):
             'success': True,
             'action': 'check_out',
             'status': existing[2],
-            'message': f'Check-out recorded successfully. Confidence: {confidence:.2f}'
+            'message': f'Check-out recorded successfully for {subject}. Confidence: {confidence:.2f}'
         }
 
     status = classify_attendance(local_now)
     cursor.execute('''
         INSERT INTO attendance (
             user_id, timestamp, attendance_date, check_in_time, status,
-            confidence, check_in_confidence, remarks
+            confidence, check_in_confidence, remarks, subject
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id, now_text, today_text, now_text, status, confidence, confidence,
-        'Checked in successfully'
+        'Checked in successfully', subject
     ))
 
     conn.commit()
@@ -558,7 +665,7 @@ def save_attendance(user_id, confidence):
         'success': True,
         'action': 'check_in',
         'status': status,
-        'message': f'Check-in recorded successfully as {status_label}. Confidence: {confidence:.2f}'
+        'message': f'Check-in recorded successfully for {subject} as {status_label}. Confidence: {confidence:.2f}'
     }
 
 def get_user_attendance(user_id, date=None):
@@ -573,7 +680,8 @@ def get_user_attendance(user_id, date=None):
                    datetime(check_out_time, 'localtime'),
                    status,
                    check_in_confidence,
-                   check_out_confidence
+                   check_out_confidence,
+                   subject
             FROM attendance
             WHERE user_id = ? AND attendance_date = ?
             ORDER BY attendance_date DESC, check_in_time DESC
@@ -585,7 +693,8 @@ def get_user_attendance(user_id, date=None):
                    datetime(check_out_time, 'localtime'),
                    status,
                    check_in_confidence,
-                   check_out_confidence
+                   check_out_confidence,
+                   subject
             FROM attendance
             WHERE user_id = ?
             ORDER BY attendance_date DESC, check_in_time DESC
@@ -605,7 +714,8 @@ def get_today_attendance():
                datetime(a.check_in_time, 'localtime'),
                datetime(a.check_out_time, 'localtime'),
                a.status,
-               a.check_in_confidence
+               a.check_in_confidence,
+               a.subject
         FROM attendance a
         JOIN users u ON a.user_id = u.id
         WHERE a.attendance_date = DATE('now', 'localtime')
@@ -992,7 +1102,8 @@ def get_recent_attendance_details(limit=50):
                a.status,
                a.check_in_confidence,
                a.check_out_confidence,
-               lf.image_path
+               lf.image_path,
+               a.subject
         FROM attendance a
         JOIN users u ON a.user_id = u.id
         LEFT JOIN (
@@ -1017,7 +1128,12 @@ def get_user_attendance_summary(user_id, month=None):
     """Return monthly attendance policy summary for one user."""
     month = month or date.today().strftime('%Y-%m')
     settings = get_attendance_settings()
-    working_days = settings['working_days_per_month']
+    import calendar
+    try:
+        y, m = [int(p) for p in month.split('-')]
+        working_days = calendar.monthrange(y, m)[1]
+    except Exception:
+        working_days = settings['working_days_per_month']
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -1043,7 +1159,7 @@ def get_user_attendance_summary(user_id, month=None):
         'present_days': present_days,
         'late_days': late_days,
         'completed_days': completed_days,
-        'absent_days': 0,
+        'absent_days': max(0, working_days - present_days),
         'percentage': percentage,
         'threshold': settings['low_attendance_threshold'],
         'is_low': percentage < settings['low_attendance_threshold'],
@@ -1053,7 +1169,12 @@ def get_monthly_attendance_report(month=None):
     """Return per-student monthly attendance report rows."""
     month = month or date.today().strftime('%Y-%m')
     settings = get_attendance_settings()
-    working_days = settings['working_days_per_month']
+    import calendar
+    try:
+        y, m = [int(p) for p in month.split('-')]
+        working_days = calendar.monthrange(y, m)[1]
+    except Exception:
+        working_days = settings['working_days_per_month']
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -1100,7 +1221,7 @@ def get_monthly_attendance_report(month=None):
             'present_days': present_days,
             'late_days': late_days,
             'completed_days': completed_days,
-            'absent_days': 0,
+            'absent_days': max(0, working_days - present_days),
             'working_days': working_days,
             'percentage': percentage,
             'is_low': percentage < settings['low_attendance_threshold'],
@@ -1148,3 +1269,134 @@ def delete_student(user_id):
                 pass
 
     return True, 'Student deleted successfully'
+
+def create_attendance_session(lecturer_id, subject):
+    """Open a new attendance session for a subject."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        UPDATE attendance_sessions
+        SET status = 'closed', closed_at = CURRENT_TIMESTAMP
+        WHERE subject = ? AND status = 'open'
+    ''', (subject,))
+    
+    cursor.execute('''
+        INSERT INTO attendance_sessions (lecturer_id, subject, status)
+        VALUES (?, ?, 'open')
+    ''', (lecturer_id, subject))
+    
+    session_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return session_id
+
+def close_attendance_session(session_id):
+    """Close an active attendance session."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE attendance_sessions
+        SET status = 'closed', closed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    ''', (session_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+def get_active_session_for_subject(subject):
+    """Check if there is an active session for the given subject."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, lecturer_id, subject, created_at
+        FROM attendance_sessions
+        WHERE subject = ? AND status = 'open'
+        ORDER BY id DESC
+        LIMIT 1
+    ''', (subject,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {
+            'id': row[0],
+            'lecturer_id': row[1],
+            'subject': row[2],
+            'created_at': row[3]
+        }
+    return None
+
+def get_lecturer_sessions(lecturer_id):
+    """Get all sessions created by a lecturer."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, subject, status, created_at, closed_at
+        FROM attendance_sessions
+        WHERE lecturer_id = ?
+        ORDER BY id DESC
+    ''', (lecturer_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    sessions = []
+    for r in rows:
+        sessions.append({
+            'id': r[0],
+            'subject': r[1],
+            'status': r[2],
+            'created_at': r[3],
+            'closed_at': r[4]
+        })
+    return sessions
+
+def get_session_attendance_details(session_id):
+    """Get list of student attendance marked during a specific session's open duration."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT created_at, closed_at, subject
+        FROM attendance_sessions
+        WHERE id = ?
+    ''', (session_id,))
+    session_info = cursor.fetchone()
+    if not session_info:
+        conn.close()
+        return []
+        
+    start_time, end_time, subject = session_info
+    
+    query = '''
+        SELECT u.id, u.full_name, u.username, u.email,
+               datetime(a.check_in_time, 'localtime'),
+               a.status,
+               a.check_in_confidence
+        FROM attendance a
+        JOIN users u ON a.user_id = u.id
+        WHERE a.subject = ? AND a.check_in_time >= ?
+    '''
+    params = [subject, start_time]
+    
+    if end_time:
+        query += ' AND a.check_in_time <= ?'
+        params.append(end_time)
+        
+    query += ' ORDER BY a.check_in_time DESC'
+    
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    attendance = []
+    for r in rows:
+        attendance.append({
+            'student_id': r[0],
+            'full_name': r[1],
+            'username': r[2],
+            'email': r[3],
+            'check_in_time': r[4],
+            'status': r[5],
+            'confidence': r[6]
+        })
+    return attendance

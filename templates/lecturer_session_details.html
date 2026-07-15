@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Session Details | FaceTrack{% endblock %}
+{% block page_name %}Session Logs{% endblock %}
+{% block page_subtitle %}Attendance report for {{ session_details.subject }}{% endblock %}
+{% block top_actions %}
+    <a class="btn btn-secondary" href="{{ url_for('lecturer_dashboard') }}">Back to Dashboard</a>
+    <a class="btn btn-success" href="{{ url_for('lecturer_export_session', session_id=session_details.id) }}">Export CSV</a>
+{% endblock %}
+
+{% block content %}
+<main class="layout">
+    <!-- Session Stats Panel -->
+    <section class="panel panel-sm">
+        <div class="panel-title">
+            <div>
+                <h2>Session Info</h2>
+                <p>Timing & metadata</p>
+            </div>
+        </div>
+        <div class="detail-list">
+            <div class="detail-row"><span class="muted">Subject</span><strong>{{ session_details.subject }}</strong></div>
+            <div class="detail-row"><span class="muted">Status</span>
+                <span class="badge {{ 'badge-success' if session_details.status == 'open' else 'badge-neutral' }}">
+                    {{ session_details.status|title }}
+                </span>
+            </div>
+            <div class="detail-row"><span class="muted">Opened</span><strong>{{ session_details.created_at }}</strong></div>
+            <div class="detail-row"><span class="muted">Closed</span><strong>{{ session_details.closed_at if session_details.closed_at else 'Active' }}</strong></div>
+            <div class="detail-row"><span class="muted">Total Marked</span><strong style="color:var(--primary); font-size: 1.15rem;">{{ attendance|length }} students</strong></div>
+        </div>
+    </section>
+
+    <!-- Student Attendance List -->
+    <section class="panel panel-lg">
+        <div class="panel-title">
+            <div>
+                <h2>Student Check-ins</h2>
+                <p>Students who successfully marked attendance during this session</p>
+            </div>
+        </div>
+        
+        {% if attendance %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student Name</th>
+                        <th>Email</th>
+                        <th>Check-in Time</th>
+                        <th>Status</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in attendance %}
+                    <tr>
+                        <td>
+                            <strong>{{ row.full_name }}</strong>
+                            <div class="muted">@{{ row.username }}</div>
+                        </td>
+                        <td>{{ row.email }}</td>
+                        <td>{{ row.check_in_time }}</td>
+                        <td>
+                            <span class="badge badge-{{ row.status }}">
+                                {{ row.status|replace('_', ' ') }}
+                            </span>
+                        </td>
+                        <td>{{ '%.2f'|format(row.confidence) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">No check-ins have been recorded for this session.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

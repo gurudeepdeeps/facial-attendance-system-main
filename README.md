@@ -1,6 +1,6 @@
-# Deeps Institute of Technology - Smart Facial Attendance System
+# XYZ Institute of Technology - Smart Facial Attendance System
 
-A Flask-based college attendance platform for **Deeps Institute of Technology**. The project includes a professional college landing page, role-based login for students, parents, and administrators, face-based attendance, student approval workflows, parent tracking, attendance policy settings, analytics, and CSV reporting.
+A Flask-based college attendance platform for **XYZ Institute of Technology**. The project includes a professional college landing page, role-based login for students, parents, and administrators, face-based attendance, student approval workflows, parent tracking, attendance policy settings, analytics, and CSV reporting.
 
 ## Overview
 
@@ -13,7 +13,7 @@ This system is designed for a college environment where:
 
 ## Main Features
 
-- Creative college landing page for Deeps Institute of Technology
+- Creative college landing page for XYZ Institute of Technology
 - Student registration with admin approval
 - Separate student, parent, and admin login panels
 - Face image submission and admin face approval workflow

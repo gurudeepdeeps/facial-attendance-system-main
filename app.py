@@ -22,9 +22,11 @@ from database import (init_db, verify_user, create_user, save_attendance, get_us
                      create_parent_user, link_parent_to_student, get_parent_accounts,
                      get_parent_students, parent_can_access_student, get_parent_links,
                      update_parent_user, delete_parent_user, update_parent_student_link,
-                     unlink_parent_student)
+                     unlink_parent_student, create_attendance_session, close_attendance_session,
+                     get_active_session_for_subject, get_lecturer_sessions, get_session_attendance_details, get_connection)
 from face_utils import (submit_face_approval_request, recognize_faces_in_frame,
-                        has_face_registered, allowed_file, clear_face_encoding_cache)
+                        has_face_registered, allowed_file, clear_face_encoding_cache,
+                        calculate_ear, calculate_distance, recognize_multiple_faces)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-change-this')
@@ -51,6 +53,8 @@ camera_lock = threading.Lock()
 recognition_frame_index = 0
 last_face_locations = []
 last_face_data = []
+
+liveness_tracker = {}
 
 def create_camera_capture():
     """Create a camera capture object configured for the highest practical quality."""
@@ -136,6 +140,14 @@ def parent_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def lecturer_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or session.get('role') != 'lecturer':
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route('/')
 def index():
     return render_template('landing.html')
@@ -147,6 +159,8 @@ def portal():
             return redirect(url_for('admin_dashboard'))
         if session.get('role') == 'parent':
             return redirect(url_for('parent_dashboard'))
+        if session.get('role') == 'lecturer':
+            return redirect(url_for('lecturer_dashboard'))
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
@@ -158,7 +172,8 @@ def login():
         login_type = request.form.get('login_type', 'student')
         is_student_login = login_type == 'student'
         is_parent_login = login_type == 'parent'
-        error_key = f'{login_type}_error' if login_type in ('student', 'admin', 'parent') else 'student_error'
+        is_lecturer_login = login_type == 'lecturer'
+        error_key = f'{login_type}_error' if login_type in ('student', 'admin', 'parent', 'lecturer') else 'student_error'
         
         user = verify_user(username, password)
         if user:
@@ -169,6 +184,8 @@ def login():
                 return render_template('login.html', **{error_key: 'Invalid parent credentials. Please use the correct login panel.'})
             if is_student_login and user['role'] != 'student':
                 return render_template('login.html', **{error_key: 'Invalid student credentials. Please use the correct login panel.'})
+            if is_lecturer_login and user['role'] != 'lecturer':
+                return render_template('login.html', **{error_key: 'Invalid lecturer credentials. Please use the correct login panel.'})
             
             if is_student_login or is_parent_login:
                 # Check approval status for student and parent accounts.
@@ -190,6 +207,8 @@ def login():
                 return redirect(url_for('admin_dashboard'))
             if user['role'] == 'parent':
                 return redirect(url_for('parent_dashboard'))
+            if user['role'] == 'lecturer':
+                return redirect(url_for('lecturer_dashboard'))
             return redirect(url_for('dashboard'))
         else:
             return render_template('login.html', **{error_key: 'Invalid credentials'})
@@ -477,6 +496,96 @@ def parent_student_details(student_id):
 
 # ==================== END PARENT ROUTES ====================
 
+# ==================== LECTURER ROUTES ====================
+
+@app.route('/lecturer_dashboard')
+@lecturer_required
+def lecturer_dashboard():
+    lecturer_id = session['user_id']
+    sessions = get_lecturer_sessions(lecturer_id)
+    active_session = None
+    for s in sessions:
+        if s['status'] == 'open':
+            active_session = s
+            break
+    return render_template('lecturer_dashboard.html', sessions=sessions, active_session=active_session)
+
+@app.route('/lecturer_open_session', methods=['POST'])
+@lecturer_required
+def lecturer_open_session():
+    lecturer_id = session['user_id']
+    subject = request.form.get('subject', '').strip()
+    if not subject:
+        return jsonify({'success': False, 'message': 'Subject is required.'}), 400
+        
+    session_id = create_attendance_session(lecturer_id, subject)
+    return jsonify({'success': True, 'message': f'Attendance session for {subject} opened successfully!', 'session_id': session_id})
+
+@app.route('/lecturer_close_session/<int:session_id>', methods=['POST'])
+@lecturer_required
+def lecturer_close_session(session_id):
+    close_attendance_session(session_id)
+    return jsonify({'success': True, 'message': 'Attendance session closed successfully.'})
+
+@app.route('/lecturer_session_details/<int:session_id>')
+@lecturer_required
+def lecturer_session_details(session_id):
+    attendance = get_session_attendance_details(session_id)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT subject, status, created_at, closed_at FROM attendance_sessions WHERE id = ?', (session_id,))
+    s_info = cursor.fetchone()
+    conn.close()
+    
+    if not s_info:
+        return redirect(url_for('lecturer_dashboard'))
+        
+    session_details = {
+        'id': session_id,
+        'subject': s_info[0],
+        'status': s_info[1],
+        'created_at': s_info[2],
+        'closed_at': s_info[3]
+    }
+    
+    return render_template('lecturer_session_details.html', session_details=session_details, attendance=attendance)
+
+@app.route('/lecturer_export_session/<int:session_id>')
+@lecturer_required
+def lecturer_export_session(session_id):
+    attendance = get_session_attendance_details(session_id)
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT subject, created_at FROM attendance_sessions WHERE id = ?', (session_id,))
+    s_info = cursor.fetchone()
+    conn.close()
+    
+    subject = s_info[0] if s_info else "Session"
+    date_str = s_info[1][:10] if s_info else "Export"
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Student ID', 'Full Name', 'Username', 'Email', 'Check-in Time', 'Status', 'Confidence'
+    ])
+    
+    for row in attendance:
+        writer.writerow([
+            row['student_id'], row['full_name'], row['username'], row['email'],
+            row['check_in_time'], row['status'], f"{row['confidence']:.2f}"
+        ])
+        
+    csv_data = output.getvalue()
+    filename = f'attendance_{subject.replace(" ", "_")}_{date_str}.csv'
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
+
+# ==================== END LECTURER ROUTES ====================
+
 @app.route('/admin_delete_student/<int:student_id>', methods=['POST'])
 @admin_required
 def admin_delete_student(student_id):
@@ -505,8 +614,28 @@ def admin_attendance_settings():
     if not 1 <= working_days <= 31:
         return jsonify({'success': False, 'message': 'Working days must be between 1 and 31.'}), 400
 
-    update_attendance_settings(reporting_time, threshold, working_days)
-    return jsonify({'success': True, 'message': 'Attendance policy updated successfully.'})
+    try:
+        college_lat = float(request.form.get('college_lat', 0.0))
+        college_lon = float(request.form.get('college_lon', 0.0))
+        geofencing_radius = float(request.form.get('geofencing_radius', 150.0))
+        geofencing_enabled = 1 if request.form.get('geofencing_enabled') in ('1', 'on', True) else 0
+        
+        smtp_host = request.form.get('smtp_host', 'smtp.gmail.com').strip()
+        smtp_port = int(request.form.get('smtp_port', 587))
+        smtp_user = request.form.get('smtp_user', '').strip()
+        smtp_password = request.form.get('smtp_password', '').strip()
+        smtp_sender = request.form.get('smtp_sender', '').strip()
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid geofencing or SMTP numerical values.'}), 400
+
+    update_attendance_settings(
+        reporting_time, threshold, working_days,
+        college_lat=college_lat, college_lon=college_lon,
+        geofencing_radius=geofencing_radius, geofencing_enabled=geofencing_enabled,
+        smtp_host=smtp_host, smtp_port=smtp_port,
+        smtp_user=smtp_user, smtp_password=smtp_password, smtp_sender=smtp_sender
+    )
+    return jsonify({'success': True, 'message': 'Attendance policy and configurations updated successfully.'})
 
 @app.route('/admin_export_attendance')
 @admin_required
@@ -537,6 +666,132 @@ def admin_export_attendance():
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
+
+@app.route('/admin_notify_low_attendance', methods=['POST'])
+@admin_required
+def admin_notify_low_attendance():
+    student_id = request.form.get('student_id')
+    settings = get_attendance_settings()
+    
+    students_to_notify = []
+    if student_id:
+        s = get_student_by_id(int(student_id))
+        if s:
+            students_to_notify.append(s)
+    else:
+        for s in get_approved_students():
+            summary = get_user_attendance_summary(s[0])
+            if summary['is_low']:
+                students_to_notify.append({
+                    'id': s[0],
+                    'full_name': s[2],
+                    'email': s[3]
+                })
+                
+    if not students_to_notify:
+        return jsonify({'success': False, 'message': 'No students found below the low attendance threshold.'})
+        
+    import smtplib
+    from email.mime.text import MIMEText
+    
+    success_count = 0
+    log_lines = []
+    smtp_configured = bool(settings['smtp_user'] and settings['smtp_password'])
+    
+    for student in students_to_notify:
+        summary = get_user_attendance_summary(student['id'])
+        percentage = summary['percentage']
+        
+        subject = "Low Attendance Alert - FaceTrack"
+        body = f"Dear {student['full_name']},\n\nYour attendance for this month is {percentage}%, which is below the college policy threshold of {settings['low_attendance_threshold']}%.\n\nPlease attend classes regularly to avoid academic penalties.\n\nBest regards,\nCollege Administration"
+        
+        message_sent = False
+        error_details = ""
+        
+        if smtp_configured:
+            try:
+                msg = MIMEText(body)
+                msg['Subject'] = subject
+                msg['From'] = settings['smtp_sender'] or settings['smtp_user']
+                msg['To'] = student['email']
+                
+                with smtplib.SMTP(settings['smtp_host'], settings['smtp_port']) as server:
+                    server.starttls()
+                    server.login(settings['smtp_user'], settings['smtp_password'])
+                    server.send_message(msg)
+                message_sent = True
+            except Exception as e:
+                error_details = str(e)
+                
+        log_entry = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] To: {student['full_name']} ({student['email']}) | Attendance: {percentage}% | Sent: {'Yes (SMTP)' if message_sent else 'Yes (Simulation)'} | Error: {error_details}\n"
+        log_lines.append(log_entry)
+        
+        try:
+            log_dir = 'static/logs'
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, 'notifications.log'), 'a') as f:
+                f.write(log_entry)
+        except Exception:
+            pass
+            
+        success_count += 1
+        
+    status_msg = f"Successfully notified {success_count} students."
+    if not smtp_configured:
+        status_msg += " (Simulation mode active: logged to static/logs/notifications.log)"
+        
+    return jsonify({'success': True, 'message': status_msg})
+
+@app.route('/admin_bulk_attendance', methods=['GET', 'POST'])
+@admin_required
+def admin_bulk_attendance():
+    if request.method == 'POST':
+        if 'bulk_image' not in request.files:
+            return jsonify({'success': False, 'message': 'No image provided.'})
+        file = request.files['bulk_image']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No image selected.'})
+            
+        if file and allowed_file(file.filename):
+            filename = secure_filename(f"bulk_{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}")
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            
+            frame = cv2.imread(file_path)
+            if frame is None:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                return jsonify({'success': False, 'message': 'Failed to read image.'})
+                
+            recognized = recognize_multiple_faces(frame)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                
+            if not recognized:
+                return jsonify({'success': False, 'message': 'No approved students recognized in the uploaded photo.'})
+                
+            return jsonify({'success': True, 'recognized': recognized})
+            
+        return jsonify({'success': False, 'message': 'Invalid file format.'})
+        
+    return render_template('admin_bulk_attendance.html', attendance_settings=get_attendance_settings())
+
+@app.route('/admin_confirm_bulk_attendance', methods=['POST'])
+@admin_required
+def admin_confirm_bulk_attendance():
+    student_ids = request.json.get('student_ids', [])
+    subject = request.json.get('subject', 'General')
+    
+    if not student_ids:
+        return jsonify({'success': False, 'message': 'No students selected.'})
+        
+    marked = []
+    for sid in student_ids:
+        res = save_attendance(int(sid), 0.90, subject)
+        if res['success']:
+            marked.append(sid)
+            
+    return jsonify({'success': True, 'message': f'Successfully marked check-in for {len(marked)} students in {subject}.'})
 
 # ==================== END ADMIN ROUTES ====================
 
@@ -619,11 +874,57 @@ def generate_frames(mirror_preview=False, recognition_interval=5, jpeg_quality=7
             face_locations = local_face_locations
             face_data = local_face_data
 
-            for (top, right, bottom, left), (name, user_data) in zip(face_locations, face_data):
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
+            rgb_frame = frame[:, :, ::-1]
+            try:
+                landmarks_list = face_recognition.face_landmarks(rgb_frame, face_locations)
+            except Exception:
+                landmarks_list = []
+
+            for i, ((top, right, bottom, left), (name, user_data)) in enumerate(zip(face_locations, face_data)):
+                liveness_text = "Liveness: Checking..."
+                liveness_color = (0, 165, 255) # Orange
+                user_id = user_data[0]
+                
+                if user_id and i < len(landmarks_list):
+                    landmarks = landmarks_list[i]
+                    left_eye = landmarks.get('left_eye', [])
+                    right_eye = landmarks.get('right_eye', [])
+                    
+                    ear_left = calculate_ear(left_eye)
+                    ear_right = calculate_ear(right_eye)
+                    ear = (ear_left + ear_right) / 2.0
+                    
+                    if user_id not in liveness_tracker:
+                        liveness_tracker[user_id] = { 'blink_count': 0, 'last_state': 'open', 'verified': False }
+                    
+                    tracker = liveness_tracker[user_id]
+                    
+                    if ear < 0.22:
+                        current_state = 'closed'
+                    elif ear > 0.25:
+                        current_state = 'open'
+                    else:
+                        current_state = tracker['last_state']
+                        
+                    if current_state == 'open' and tracker['last_state'] == 'closed':
+                        tracker['blink_count'] += 1
+                        if tracker['blink_count'] >= 1:
+                            tracker['verified'] = True
+                            
+                    tracker['last_state'] = current_state
+                    
+                    if tracker['verified']:
+                        liveness_text = "Liveness: Verified"
+                        liveness_color = (0, 255, 0) # Green
+                    else:
+                        liveness_text = f"Blink to verify: {tracker['blink_count']}/1"
+                        liveness_color = (0, 0, 255) # Red
+                
+                cv2.rectangle(frame, (left, top), (right, bottom), liveness_color, 2)
+                cv2.rectangle(frame, (left, bottom - 40), (right, bottom), liveness_color, cv2.FILLED)
                 font = cv2.FONT_HERSHEY_DUPLEX
-                cv2.putText(frame, name, (left + 6, bottom - 6), font, 0.6, (255, 255, 255), 1)
+                cv2.putText(frame, name, (left + 6, bottom - 22), font, 0.52, (255, 255, 255), 1)
+                cv2.putText(frame, liveness_text, (left + 6, bottom - 6), font, 0.45, (255, 255, 255), 1)
 
             ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
             if not ret:
@@ -668,6 +969,37 @@ def video_feed_register():
 @app.route('/mark_attendance', methods=['POST'])
 @student_required
 def mark_attendance():
+    user_id = session['user_id']
+    subject = request.form.get('subject', 'General')
+    
+    # Check if active session exists
+    active_session = get_active_session_for_subject(subject)
+    if not active_session:
+        return jsonify({'success': False, 'message': f'Attendance is blocked. There is no active session open for subject "{subject}". Please wait for your lecturer to open the session.'})
+    
+    # 1. Liveness check
+    tracker = liveness_tracker.get(user_id)
+    if not tracker or not tracker.get('verified'):
+        return jsonify({'success': False, 'message': 'Liveness verification failed. Please blink your eyes in front of the camera.'})
+
+    # 2. Geofencing check
+    settings = get_attendance_settings()
+    if settings.get('geofencing_enabled'):
+        lat_str = request.form.get('latitude')
+        lon_str = request.form.get('longitude')
+        if not lat_str or not lon_str:
+            return jsonify({'success': False, 'message': 'Location access is required by college attendance policy.'})
+        try:
+            student_lat = float(lat_str)
+            student_lon = float(lon_str)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid location coordinates received.'})
+            
+        dist = calculate_distance(student_lat, student_lon, settings['college_lat'], settings['college_lon'])
+        if dist > settings['geofencing_radius']:
+            return jsonify({'success': False, 'message': f'You are outside the campus boundary. Distance: {dist:.1f}m (Max: {settings["geofencing_radius"]}m)'})
+
+    # 3. Face verification
     with frame_lock:
         frame = None if latest_frame is None else latest_frame.copy()
 
@@ -676,7 +1008,6 @@ def mark_attendance():
 
     face_locations, face_data = recognize_faces_in_frame(frame)
     
-    user_id = session['user_id']
     user_recognized = False
     confidence = 0
     
@@ -687,7 +1018,10 @@ def mark_attendance():
             break
     
     if user_recognized:
-        result = save_attendance(user_id, confidence)
+        result = save_attendance(user_id, confidence, subject)
+        # Reset tracker for next scan
+        if user_id in liveness_tracker:
+            liveness_tracker[user_id] = { 'blink_count': 0, 'last_state': 'open', 'verified': False }
         return jsonify(result)
     else:
         return jsonify({'success': False, 'message': 'Face not recognized. Please ensure your face is clearly visible.'})
@@ -695,6 +1029,30 @@ def mark_attendance():
 @app.route('/mark_attendance_with_photo', methods=['POST'])
 @student_required
 def mark_attendance_with_photo():
+    subject = request.form.get('subject', 'General')
+    
+    # Check if active session exists
+    active_session = get_active_session_for_subject(subject)
+    if not active_session:
+        return jsonify({'success': False, 'message': f'Attendance is blocked. There is no active session open for subject "{subject}". Please wait for your lecturer to open the session.'})
+
+    # 1. Geofencing check
+    settings = get_attendance_settings()
+    if settings.get('geofencing_enabled'):
+        lat_str = request.form.get('latitude')
+        lon_str = request.form.get('longitude')
+        if not lat_str or not lon_str:
+            return jsonify({'success': False, 'message': 'Location access is required by college attendance policy.'})
+        try:
+            student_lat = float(lat_str)
+            student_lon = float(lon_str)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid location coordinates received.'})
+            
+        dist = calculate_distance(student_lat, student_lon, settings['college_lat'], settings['college_lon'])
+        if dist > settings['geofencing_radius']:
+            return jsonify({'success': False, 'message': f'You are outside the campus boundary. Distance: {dist:.1f}m (Max: {settings["geofencing_radius"]}m)'})
+
     if 'face_image' not in request.files:
         return jsonify({'success': False, 'message': 'No image provided'})
     
@@ -732,7 +1090,8 @@ def mark_attendance_with_photo():
                 break
         
         if user_recognized:
-            result = save_attendance(user_id, confidence)
+            subject = request.form.get('subject', 'General')
+            result = save_attendance(user_id, confidence, subject)
             return jsonify(result)
         else:
             return jsonify({'success': False, 'message': 'Face not recognized. Please ensure your face is clearly visible.'})

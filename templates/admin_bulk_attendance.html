@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Bulk Attendance Upload | FaceTrack{% endblock %}
+{% block page_name %}Bulk Class Attendance{% endblock %}
+{% block page_subtitle %}Mark attendance for multiple students from a single photo{% endblock %}
+{% block top_actions %}
+    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a>
+    <a class="btn btn-secondary" href="{{ url_for('logout') }}">Sign out</a>
+{% endblock %}
+
+{% block content %}
+<main class="layout">
+    <section class="panel panel-lg">
+        <div class="panel-title">
+            <div>
+                <h2>Upload Classroom Photo</h2>
+                <p>Upload a group photograph to recognize students in bulk.</p>
+            </div>
+        </div>
+        
+        <form id="bulkForm" enctype="multipart/form-data" style="margin-top: 20px;">
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.88rem; color: var(--text-muted);">Select Subject</label>
+                <select id="bulkSubject" class="form-control" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+                    <option value="Mathematics">Mathematics</option>
+                    <option value="Physics">Physics</option>
+                    <option value="Chemistry">Chemistry</option>
+                    <option value="Computer Science">Computer Science</option>
+                    <option value="English">English</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.88rem; color: var(--text-muted);">Classroom Group Photo</label>
+                <input type="file" id="bulkImage" name="bulk_image" accept="image/*" required style="width: 100%; padding: 12px; border-radius: 8px; border: 1px dashed rgba(255,255,255,0.2); background: rgba(0,0,0,0.15); color: #fff;">
+            </div>
+            
+            <button type="submit" id="scanBtn" class="btn btn-primary" style="width: 100%; padding: 12px;">Scan Photo & Detect Faces</button>
+        </form>
+        
+        <div id="bulkMessage" style="margin-top: 15px;"></div>
+        
+        <!-- Results Section -->
+        <div id="resultsSection" style="display: none; margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+            <h3 style="margin-bottom: 12px; font-size: 1.1rem; color: #fff;">Detected Students</h3>
+            <p class="muted" style="margin-bottom: 15px;">Uncheck any student who is not actually present or recognized incorrectly.</p>
+            
+            <div id="studentList" style="display: grid; gap: 10px; max-height: 300px; overflow-y: auto; margin-bottom: 20px;">
+                <!-- Filled dynamically -->
+            </div>
+            
+            <button id="confirmBtn" class="btn btn-success" style="width: 100%; padding: 12px;">Confirm & Save Attendance</button>
+        </div>
+    </section>
+    
+    <aside class="panel panel-sm">
+        <div class="panel-title">
+            <div>
+                <h2>Bulk policy</h2>
+                <p>Rules & Instructions</p>
+            </div>
+        </div>
+        <div class="detail-list">
+            <div class="detail-row"><span class="muted">Accuracy scale</span><strong>Original resolution</strong></div>
+            <div class="detail-row"><span class="muted">Check-in confidence</span><strong>90% default</strong></div>
+            <div class="detail-row"><span class="muted">Duplicates</span><strong>Bypassed/Overwrite</strong></div>
+        </div>
+        <div style="margin-top: 22px;">
+            <h3 class="section-title">Best Practices</h3>
+            <p class="muted">Ensure all student faces are well-lit and facing the camera directly. High-resolution group pictures improve recognition accuracy significantly.</p>
+        </div>
+    </aside>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const bulkForm = document.getElementById('bulkForm');
+    const scanBtn = document.getElementById('scanBtn');
+    const bulkMessage = document.getElementById('bulkMessage');
+    const resultsSection = document.getElementById('resultsSection');
+    const studentList = document.getElementById('studentList');
+    const confirmBtn = document.getElementById('confirmBtn');
+    
+    let recognizedStudents = [];
+
+    bulkForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        bulkMessage.className = 'message message-neutral';
+        bulkMessage.textContent = 'Processing classroom photo... This might take a few seconds.';
+        scanBtn.disabled = true;
+        resultsSection.style.display = 'none';
+        studentList.innerHTML = '';
+        
+        const formData = new FormData(bulkForm);
+        
+        try {
+            const response = await fetch('{{ url_for("admin_bulk_attendance") }}', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            
+            if (result.success && result.recognized.length > 0) {
+                bulkMessage.className = 'message message-success';
+                bulkMessage.textContent = `Found ${result.recognized.length} students! Verify list below.`;
+                
+                recognizedStudents = result.recognized;
+                resultsSection.style.display = 'block';
+                
+                // Render students list
+                recognizedStudents.forEach(student => {
+                    const row = document.createElement('div');
+                    row.style.display = 'flex';
+                    row.style.alignItems = 'center';
+                    row.style.justifyContent = 'space-between';
+                    row.style.background = 'rgba(255,255,255,0.03)';
+                    row.style.padding = '10px 14px';
+                    row.style.borderRadius = '8px';
+                    row.style.border = '1px solid rgba(255,255,255,0.05)';
+                    
+                    row.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" checked value="${student.user_id}" class="student-checkbox" style="width: 18px; height: 18px; cursor: pointer;">
+                            <div>
+                                <strong style="color: #fff;">${student.name}</strong>
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">Confidence: ${(student.confidence * 100).toFixed(1)}%</div>
+                            </div>
+                        </div>
+                    `;
+                    studentList.appendChild(row);
+                });
+            } else {
+                bulkMessage.className = 'message message-error';
+                bulkMessage.textContent = result.message || 'No students recognized in the uploaded photo.';
+            }
+        } catch (error) {
+            bulkMessage.className = 'message message-error';
+            bulkMessage.textContent = 'Error processing photo. Ensure face recognition library is fully configured.';
+        } finally {
+            scanBtn.disabled = false;
+        }
+    });
+    
+    confirmBtn.addEventListener('click', async () => {
+        const checkedBoxes = document.querySelectorAll('.student-checkbox:checked');
+        const selectedIds = Array.from(checkedBoxes).map(cb => cb.value);
+        const subject = document.getElementById('bulkSubject').value;
+        
+        if (selectedIds.length === 0) {
+            bulkMessage.className = 'message message-error';
+            bulkMessage.textContent = 'Please select at least one student.';
+            return;
+        }
+        
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner"></span> Saving records...';
+        
+        try {
+            const response = await fetch('{{ url_for("admin_confirm_bulk_attendance") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    student_ids: selectedIds,
+                    subject: subject
+                })
+            });
+            const result = await response.json();
+            
+            bulkMessage.className = `message ${result.success ? 'message-success' : 'message-error'}`;
+            bulkMessage.textContent = result.message;
+            
+            if (result.success) {
+                setTimeout(() => window.location.href = '{{ url_for("admin_dashboard") }}', 2000);
+            } else {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Confirm & Save Attendance';
+            }
+        } catch (error) {
+            bulkMessage.className = 'message message-error';
+            bulkMessage.textContent = 'Could not save attendance records. Please try again.';
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Confirm & Save Attendance';
+        }
+    });
+</script>
+{% endblock %}

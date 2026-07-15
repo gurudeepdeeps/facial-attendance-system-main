@@ -214,3 +214,72 @@ def has_face_registered(user_id):
     
     conn.close()
     return count > 0
+
+import math
+
+def calculate_ear(eye_points):
+    """Calculate the Eye Aspect Ratio (EAR) for a given eye points list."""
+    if len(eye_points) < 6:
+        return 0.0
+    
+    # Distance between vertical eye landmarks
+    a = math.sqrt((eye_points[1][0] - eye_points[5][0])**2 + (eye_points[1][1] - eye_points[5][1])**2)
+    b = math.sqrt((eye_points[2][0] - eye_points[4][0])**2 + (eye_points[2][1] - eye_points[4][1])**2)
+    
+    # Distance between horizontal eye landmarks
+    c = math.sqrt((eye_points[0][0] - eye_points[3][0])**2 + (eye_points[0][1] - eye_points[3][1])**2)
+    
+    if c == 0:
+        return 0.0
+        
+    return (a + b) / (2.0 * c)
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """Calculate the distance in meters between two GPS coordinates using the Haversine formula."""
+    R = 6371000.0  # radius of Earth in meters
+    
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    
+    a = math.sin(delta_phi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * (math.sin(delta_lambda / 2.0) ** 2)
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    
+    return R * c
+
+def recognize_multiple_faces(frame):
+    """Recognize all faces in a high-res group photo at original scale for bulk attendance."""
+    known_encodings, known_user_ids, known_names = get_all_face_encodings()
+    if not known_encodings:
+        return []
+        
+    try:
+        rgb_frame = frame[:, :, ::-1]  # Convert BGR to RGB
+        face_locations = face_recognition.face_locations(rgb_frame)
+        if not face_locations:
+            return []
+            
+        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+        recognized_users = []
+        
+        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+            matches = face_recognition.compare_faces(known_encodings, face_encoding)
+            face_distances = face_recognition.face_distance(known_encodings, face_encoding)
+            
+            if len(face_distances) > 0:
+                best_match_index = np.argmin(face_distances)
+                if matches[best_match_index] and face_distances[best_match_index] < 0.6:
+                    user_id = known_user_ids[best_match_index]
+                    name = known_names[best_match_index]
+                    confidence = 1 - face_distances[best_match_index]
+                    recognized_users.append({
+                        'user_id': user_id,
+                        'name': name,
+                        'confidence': float(confidence),
+                        'box': (int(top), int(right), int(bottom), int(left))
+                    })
+        return recognized_users
+    except Exception as e:
+        print(f"Error in multi-face recognition: {e}")
+        return []

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Lecturer Dashboard | FaceTrack{% endblock %}
+{% block page_name %}Lecturer Dashboard{% endblock %}
+{% block page_subtitle %}Manage attendance sessions and track student check-ins{% block page_subtitle_val %}{% endblock %}{% endblock %}
+{% block top_actions %}
+    <span class="muted">{{ session.full_name }}</span>
+    <a class="btn btn-secondary" href="{{ url_for('logout') }}">Sign out</a>
+{% endblock %}
+
+{% block content %}
+<main class="layout">
+    <section class="panel panel-lg">
+        <div class="panel-title">
+            <div>
+                <h2>Session Controller</h2>
+                <p>Open or close active attendance scanning windows.</p>
+            </div>
+        </div>
+
+        <!-- Active Session Card -->
+        {% if active_session %}
+        <div id="activeSessionCard" style="background: rgba(var(--primary-rgb, 99, 102, 241), 0.15); border: 1px solid var(--primary); border-radius: 12px; padding: 20px; margin-top: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span class="badge badge-success" style="margin-bottom: 8px;">Active Session Open</span>
+                    <h3 style="font-size: 1.4rem; color: #fff; margin: 0;">{{ active_session.subject }}</h3>
+                    <p class="muted" style="margin-top: 4px; font-size: 0.88rem;">Opened at: {{ active_session.created_at }}</p>
+                </div>
+                <button onclick="closeSession({{ active_session.id }})" class="btn btn-danger" style="padding: 10px 20px;">Close Session</button>
+            </div>
+        </div>
+        {% else %}
+        <!-- Open New Session Form -->
+        <form id="openSessionForm" style="margin-top: 20px;">
+            <div style="margin-bottom: 16px;">
+                <label for="subjectSelect" style="display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.88rem; color: var(--text-muted);">Select Subject for Lecture</label>
+                <select id="subjectSelect" name="subject" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: #fff; font-size: 1rem;">
+                    <option value="Mathematics">Mathematics</option>
+                    <option value="Physics">Physics</option>
+                    <option value="Chemistry">Chemistry</option>
+                    <option value="Computer Science">Computer Science</option>
+                    <option value="English">English</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem;">Activate Attendance Session</button>
+        </form>
+        {% endif %}
+
+        <div id="sessionMessage" style="margin-top: 15px;"></div>
+    </section>
+
+    <!-- Past Sessions List -->
+    <section class="panel panel-md" style="grid-column: span 2;">
+        <div class="panel-title">
+            <div>
+                <h2>Your Attendance Sessions</h2>
+                <p>History of opened class attendance sessions</p>
+            </div>
+        </div>
+        {% if sessions %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Created At</th>
+                        <th>Closed At</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session_item in sessions %}
+                    <tr>
+                        <td><strong>{{ session_item.subject }}</strong></td>
+                        <td>{{ session_item.created_at }}</td>
+                        <td>{{ session_item.closed_at if session_item.closed_at else 'Active' }}</td>
+                        <td>
+                            <span class="badge {{ 'badge-success' if session_item.status == 'open' else 'badge-neutral' }}">
+                                {{ session_item.status|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('lecturer_session_details', session_id=session_item.id) }}" class="btn-small btn-approve" style="text-decoration:none;">View Logs</a>
+                            <a href="{{ url_for('lecturer_export_session', session_id=session_item.id) }}" class="btn-small btn-reject" style="text-decoration:none; margin-left: 6px;">CSV</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">You have not created any sessions yet. Open your first session to track attendance.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const form = document.getElementById('openSessionForm');
+    const msg = document.getElementById('sessionMessage');
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            msg.className = 'message message-neutral';
+            msg.textContent = 'Opening session...';
+
+            try {
+                const response = await fetch('{{ url_for("lecturer_open_session") }}', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                msg.className = `message ${result.success ? 'message-success' : 'message-error'}`;
+                msg.textContent = result.message;
+                if (result.success) {
+                    setTimeout(() => location.reload(), 1200);
+                }
+            } catch (err) {
+                msg.className = 'message message-error';
+                msg.textContent = 'Failed to open session. Try again.';
+            }
+        });
+    }
+
+    async function closeSession(sessionId) {
+        if (!confirm('Close this active attendance session? Students will no longer be able to mark attendance.')) return;
+        
+        try {
+            const response = await fetch(`/lecturer_close_session/${sessionId}`, { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                location.reload();
+            } else {
+                alert(result.message || 'Failed to close session.');
+            }
+        } catch (err) {
+            alert('Failed to connect to server.');
+        }
+    }
+</script>
+{% endblock %}

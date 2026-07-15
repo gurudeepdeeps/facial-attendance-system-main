@@ -11,6 +11,7 @@
     <a class="btn btn-secondary" href="{{ url_for('admin_face_requests') }}">Face requests</a>
     <a class="btn btn-secondary" href="{{ url_for('admin_parents') }}">Parents</a>
     <a class="btn btn-secondary" href="{{ url_for('admin_search_students') }}">Search</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_bulk_attendance') }}">Bulk Scan</a>
     <a class="btn btn-success" href="{{ url_for('admin_export_attendance') }}">Export CSV</a>
 </nav>
 {% endblock %}
@@ -67,17 +68,22 @@
     <section class="panel panel-md">
         <div class="panel-title">
             <div><h2>Low attendance alerts</h2><p>Students below {{ attendance_settings.low_attendance_threshold }}%</p></div>
+            {% if low_attendance_students %}
+            <button id="notifyAllBtn" class="btn btn-primary" onclick="notifyStudents()">Notify All via Email</button>
+            {% endif %}
         </div>
+        <div id="notifyMessage"></div>
         {% if low_attendance_students %}
         <div class="table-wrap">
             <table style="min-width: 520px;">
-                <thead><tr><th>Student</th><th>Present</th><th>Attendance</th></tr></thead>
+                <thead><tr><th>Student</th><th>Present</th><th>Attendance</th><th>Action</th></tr></thead>
                 <tbody>
                 {% for student in low_attendance_students %}
                     <tr>
                         <td><a href="{{ url_for('admin_student_details', student_id=student.id) }}"><strong>{{ student.full_name }}</strong></a></td>
                         <td>{{ student.present_days }}/{{ student.working_days }}</td>
                         <td><span class="badge badge-low">{{ student.percentage }}%</span></td>
+                        <td><button class="btn-small btn-approve" onclick="notifyStudents({{ student.id }})">Notify</button></td>
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -88,24 +94,73 @@
         {% endif %}
     </section>
 
-    <section class="panel panel-md">
+    <section class="panel panel-md" style="grid-column: span 2;">
         <div class="panel-title">
-            <div><h2>Attendance policy</h2><p>Rules applied to new check-ins and monthly reports</p></div>
+            <div><h2>Attendance policy & system settings</h2><p>Configure Timing Rules, Geofencing Boundary, and SMTP Email credentials</p></div>
         </div>
         <form id="policyForm">
-            <div class="field">
-                <label for="reportingTime">Reporting time</label>
-                <input id="reportingTime" type="time" name="reporting_time" value="{{ attendance_settings.reporting_time }}" required>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                    <h3 style="margin-bottom: 12px; font-size: 0.95rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; color: var(--primary);">Timing & Threshold Rules</h3>
+                    <div class="field">
+                        <label for="reportingTime">Reporting time</label>
+                        <input id="reportingTime" type="time" name="reporting_time" value="{{ attendance_settings.reporting_time }}" required style="width: 100%;">
+                    </div>
+                    <div class="field">
+                        <label for="attendanceThreshold">Low-attendance threshold (%)</label>
+                        <input id="attendanceThreshold" type="number" name="low_attendance_threshold" min="1" max="100" value="{{ attendance_settings.low_attendance_threshold }}" required style="width: 100%;">
+                    </div>
+                    <div class="field">
+                        <label for="workingDays">Working days per month</label>
+                        <input id="workingDays" type="number" name="working_days_per_month" min="1" max="31" value="{{ attendance_settings.working_days_per_month }}" required style="width: 100%;">
+                    </div>
+                    
+                    <h3 style="margin-top: 20px; margin-bottom: 12px; font-size: 0.95rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; color: var(--primary);">Geofencing (Campus Boundary Check)</h3>
+                    <div class="field" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input id="geofencingEnabled" type="checkbox" name="geofencing_enabled" {% if attendance_settings.geofencing_enabled %}checked{% endif %} style="width: auto; cursor: pointer;">
+                        <label for="geofencingEnabled" style="margin-bottom: 0; cursor: pointer;">Enable Geofencing restriction</label>
+                    </div>
+                    <div class="field">
+                        <label for="collegeLat">Campus Latitude (e.g. 12.9716)</label>
+                        <input id="collegeLat" type="number" step="any" name="college_lat" value="{{ attendance_settings.college_lat }}" style="width: 100%;">
+                    </div>
+                    <div class="field">
+                        <label for="collegeLon">Campus Longitude (e.g. 77.5946)</label>
+                        <input id="collegeLon" type="number" step="any" name="college_lon" value="{{ attendance_settings.college_lon }}" style="width: 100%;">
+                    </div>
+                    <div class="field">
+                        <label for="geofencingRadius">Allowed Scan Radius (meters)</label>
+                        <input id="geofencingRadius" type="number" name="geofencing_radius" value="{{ attendance_settings.geofencing_radius }}" style="width: 100%;">
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 style="margin-bottom: 12px; font-size: 0.95rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; color: var(--primary);">SMTP Mail Server Credentials</h3>
+                    <p class="muted" style="margin-bottom: 12px; font-size: 0.78rem;">Leave Username & Password blank to log notifications locally without sending real emails.</p>
+                    <div class="field">
+                        <label for="smtpHost">SMTP Server Hostname</label>
+                        <input id="smtpHost" type="text" name="smtp_host" value="{{ attendance_settings.smtp_host }}" style="width: 100%;">
+                    </div>
+                    <div class="field">
+                        <label for="smtpPort">SMTP Port (usually 587 or 465)</label>
+                        <input id="smtpPort" type="number" name="smtp_port" value="{{ attendance_settings.smtp_port }}" style="width: 100%;">
+                    </div>
+                    <div class="field">
+                        <label for="smtpSender">Sender Address (From Name)</label>
+                        <input id="smtpSender" type="text" name="smtp_sender" value="{{ attendance_settings.smtp_sender }}" style="width: 100%;">
+                    </div>
+                    <div class="field">
+                        <label for="smtpUser">SMTP Account Username</label>
+                        <input id="smtpUser" type="text" name="smtp_user" value="{{ attendance_settings.smtp_user }}" style="width: 100%;">
+                    </div>
+                    <div class="field">
+                        <label for="smtpPassword">SMTP Account Password</label>
+                        <input id="smtpPassword" type="password" name="smtp_password" value="{{ attendance_settings.smtp_password }}" style="width: 100%;">
+                    </div>
+                </div>
             </div>
-            <div class="field">
-                <label for="attendanceThreshold">Low-attendance threshold (%)</label>
-                <input id="attendanceThreshold" type="number" name="low_attendance_threshold" min="1" max="100" value="{{ attendance_settings.low_attendance_threshold }}" required>
-            </div>
-            <div class="field">
-                <label for="workingDays">Working days per month</label>
-                <input id="workingDays" type="number" name="working_days_per_month" min="1" max="31" value="{{ attendance_settings.working_days_per_month }}" required>
-            </div>
-            <div class="field"><button class="btn btn-primary" type="submit">Save policy</button></div>
+            
+            <div class="field" style="margin-top: 20px;"><button class="btn btn-primary" type="submit" style="width: 100%; padding: 12px;">Save Policy & System Configurations</button></div>
         </form>
         <div id="policyMessage"></div>
     </section>
@@ -167,6 +222,30 @@
 
 {% block scripts %}
 <script>
+async function notifyStudents(studentId = null) {
+    const notifyMessage = document.getElementById('notifyMessage');
+    notifyMessage.className = 'message message-neutral';
+    notifyMessage.textContent = 'Sending email notification alerts...';
+    
+    const formData = new FormData();
+    if (studentId) {
+        formData.append('student_id', studentId);
+    }
+    
+    try {
+        const response = await fetch('{{ url_for("admin_notify_low_attendance") }}', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        notifyMessage.className = `message ${result.success ? 'message-success' : 'message-error'}`;
+        notifyMessage.textContent = result.message;
+    } catch (e) {
+        notifyMessage.className = 'message message-error';
+        notifyMessage.textContent = 'Failed to send notifications. Try again.';
+    }
+}
+
 async function updateStudent(id, action) {
     if (!confirm(`${action === 'approve' ? 'Approve' : 'Reject'} this student?`)) return;
     const response = await fetch(`/admin_${action}_student/${id}`, {method: 'POST'});
