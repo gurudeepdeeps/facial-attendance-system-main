@@ -171,14 +171,7 @@ def init_db():
         ''', ('admin', admin_password_hash, 'System Administrator', 'admin@attendance.system', 'admin', 'approved'))
         conn.commit()
 
-    cursor.execute('SELECT COUNT(*) FROM users WHERE role = ?', ('parent',))
-    if cursor.fetchone()[0] == 0:
-        parent_password_hash = hash_password('parent123')
-        cursor.execute('''
-            INSERT INTO users (username, password_hash, full_name, email, role, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', ('parent', parent_password_hash, 'Demo Parent', 'parent@attendance.system', 'parent', 'approved'))
-        conn.commit()
+
 
     # Create attendance_sessions table
     cursor.execute(f'''
@@ -597,9 +590,14 @@ def get_attendance_settings():
 
     # Automatically check if the month has changed to auto-calculate the new month's days
     updated_at = row[12]
-    from datetime import date
+    from datetime import date, datetime
     current_month_str = date.today().strftime('%Y-%m')
-    updated_month_str = updated_at[:7] if updated_at else ''
+    if isinstance(updated_at, (datetime, date)):
+        updated_month_str = updated_at.strftime('%Y-%m')
+    elif isinstance(updated_at, str):
+        updated_month_str = updated_at[:7]
+    else:
+        updated_month_str = ''
 
     if current_month_str != updated_month_str:
         import calendar
@@ -1179,15 +1177,15 @@ def get_dashboard_stats():
     cursor = conn.cursor()
     
     # Total students
-    cursor.execute('SELECT COUNT(*) FROM users WHERE role = "student"')
+    cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
     total_students = cursor.fetchone()[0]
     
     # Pending approvals
-    cursor.execute('SELECT COUNT(*) FROM users WHERE role = "student" AND status = "pending"')
+    cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student' AND status = 'pending'")
     pending_count = cursor.fetchone()[0]
     
     # Approved students
-    cursor.execute('SELECT COUNT(*) FROM users WHERE role = "student" AND status = "approved"')
+    cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student' AND status = 'approved'")
     approved_count = cursor.fetchone()[0]
     
     # Today's attendance

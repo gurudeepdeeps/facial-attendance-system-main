@@ -10,6 +10,9 @@ Usage in database.py:
 
 import os
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 IS_POSTGRES = bool(DATABASE_URL)
@@ -28,11 +31,13 @@ else:
 
 # ─── SQL normalisation ────────────────────────────────────────────────────────
 _SQLITE_TO_PG = [
-    ("DATE('now', 'localtime')",          "CURRENT_DATE"),
-    ("DATETIME('now', 'localtime')",      "NOW()"),
-    ("DATE(timestamp, 'localtime')",      "(timestamp AT TIME ZONE 'UTC')::date"),
-    ("DATE(check_in_time, 'localtime')",  "(check_in_time AT TIME ZONE 'UTC')::date"),
-    ("DATE(closed_at, 'localtime')",      "(closed_at AT TIME ZONE 'UTC')::date"),
+    ("DATE('now', 'localtime')",               "CURRENT_DATE::text"),
+    ("DATETIME('now', 'localtime')",           "NOW()"),
+    ("DATE(timestamp, 'localtime')",           "(timestamp AT TIME ZONE 'UTC')::date"),
+    ("DATE(check_in_time, 'localtime')",       "(check_in_time AT TIME ZONE 'UTC')::date"),
+    ("DATE(closed_at, 'localtime')",           "(closed_at AT TIME ZONE 'UTC')::date"),
+    ("datetime(a.check_in_time, 'localtime')", "a.check_in_time"),
+    ("datetime(a.check_out_time, 'localtime')","a.check_out_time"),
 ]
 
 
