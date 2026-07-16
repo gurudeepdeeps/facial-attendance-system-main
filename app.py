@@ -7,6 +7,11 @@ import gradio as gr
 print("Starting Flask application...")
 port = os.environ.get("PORT", "7860")
 
+# Run inline installs to bypass global dependencies checker issues
+import sys
+subprocess.check_call([sys.executable, "-m", "pip", "install", "dlib-bin"])
+subprocess.check_call([sys.executable, "-m", "pip", "install", "face-recognition"])
+
 # Run Flask on port 8000 internally
 subprocess.Popen(["python", "flask_app.py"], env=dict(os.environ, PORT="8000"))
 
