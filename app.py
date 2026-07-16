@@ -1,6 +1,27 @@
 import subprocess
 import time
 import os
+# Mock huggingface_hub.HfFolder to prevent importing bugs in older Gradio versions
+import sys
+import types
+try:
+    import huggingface_hub
+    if not hasattr(huggingface_hub, 'HfFolder'):
+        class DummyHfFolder:
+            @staticmethod
+            def get_token():
+                return os.environ.get("HF_TOKEN", "")
+            @staticmethod
+            def save_token(token):
+                pass
+            @staticmethod
+            def delete_token():
+                pass
+        huggingface_hub.HfFolder = DummyHfFolder
+        sys.modules['huggingface_hub'].HfFolder = DummyHfFolder
+except Exception as e:
+    print("Failed to mock huggingface_hub.HfFolder:", e)
+
 import gradio as gr
 
 # Start the Flask app in a background process
