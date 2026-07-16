@@ -10,3 +10,4 @@ supabase
 gunicorn
 python-dotenv
 gradio
+huggingface_hub==0.23.2
