@@ -1,7 +1,12 @@
-import sqlite3
 import hashlib
 from datetime import datetime, date, timedelta
 import os
+
+from db_compat import (
+    get_connection, IS_POSTGRES,
+    PK, BLOB, INT_PK_SINGLETON,
+    column_exists, ensure_column,
+)
 
 DEFAULT_SETTINGS = {
     'reporting_time': '09:15',
@@ -9,20 +14,11 @@ DEFAULT_SETTINGS = {
     'working_days_per_month': 22,
 }
 
+# Keep DB_PATH for backwards compatibility (used by face_utils)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'attendance.db')
 
-def get_connection():
-    """Create a SQLite connection with row access enabled where needed."""
-    return sqlite3.connect(DB_PATH)
-
-def column_exists(cursor, table_name, column_name):
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    return any(row[1] == column_name for row in cursor.fetchall())
-
-def ensure_column(cursor, table_name, column_name, column_definition):
-    if not column_exists(cursor, table_name, column_name):
-        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
+# column_exists and ensure_column are imported from db_compat
 
 def init_db():
     """Initialize the database with required tables"""
@@ -30,9 +26,9 @@ def init_db():
     cursor = conn.cursor()
     
     # Users table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {PK},
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             full_name TEXT NOT NULL,
@@ -46,22 +42,22 @@ def init_db():
     cursor.execute('UPDATE users SET role = ? WHERE role = ?', ('student', legacy_role))
     
     # Face encodings table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS face_encodings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {PK},
             user_id INTEGER NOT NULL,
-            encoding BLOB NOT NULL,
+            encoding {BLOB} NOT NULL,
             image_path TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS face_approval_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {PK},
             user_id INTEGER NOT NULL,
-            encoding BLOB NOT NULL,
+            encoding {BLOB} NOT NULL,
             image_path TEXT NOT NULL,
             request_type TEXT NOT NULL,
             status TEXT DEFAULT 'pending',
@@ -74,9 +70,9 @@ def init_db():
     ''')
     
     # Attendance records table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS attendance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {PK},
             user_id INTEGER NOT NULL,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             status TEXT DEFAULT 'present',
@@ -109,9 +105,9 @@ def init_db():
         WHERE check_in_confidence IS NULL
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS attendance_settings (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            id {INT_PK_SINGLETON},
             reporting_time TEXT NOT NULL DEFAULT '09:15',
             low_attendance_threshold INTEGER NOT NULL DEFAULT 75,
             working_days_per_month INTEGER NOT NULL DEFAULT 22,
@@ -121,9 +117,9 @@ def init_db():
             geofencing_enabled INTEGER DEFAULT 0,
             smtp_host TEXT DEFAULT 'smtp.gmail.com',
             smtp_port INTEGER DEFAULT 587,
-            smtp_user TEXT DEFAULT '',
-            smtp_password TEXT DEFAULT '',
-            smtp_sender TEXT DEFAULT '',
+            smtp_user TEXT DEFAULT \'\',
+            smtp_password TEXT DEFAULT \'\',
+            smtp_sender TEXT DEFAULT \'\',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -150,9 +146,9 @@ def init_db():
             DEFAULT_SETTINGS['working_days_per_month'],
         ))
 
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS parent_students (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {PK},
             parent_id INTEGER NOT NULL,
             student_id INTEGER NOT NULL,
             relationship TEXT DEFAULT 'Parent',
@@ -185,9 +181,9 @@ def init_db():
         conn.commit()
 
     # Create attendance_sessions table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS attendance_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {PK},
             lecturer_id INTEGER NOT NULL,
             subject TEXT NOT NULL,
             status TEXT DEFAULT 'open',
@@ -207,9 +203,9 @@ def init_db():
     conn.commit()
 
     # Create subjects table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS subjects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {PK},
             name TEXT UNIQUE NOT NULL
         )
     ''')

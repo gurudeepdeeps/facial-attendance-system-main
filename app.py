@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response
+from dotenv import load_dotenv
+load_dotenv()
 import cv2
 import numpy as np
 import os
@@ -47,52 +49,16 @@ init_db()
 def favicon():
     return redirect(url_for('static', filename='favicon.svg'))
 
-# Global camera object
-camera = None
-latest_frame = None
-frame_lock = threading.Lock()
-camera_lock = threading.Lock()
-recognition_frame_index = 0
-last_face_locations = []
-last_face_data = []
-
+# Camera lock globals removed since capture occurs client-side
 liveness_tracker = {}
 
-def create_camera_capture():
-    """Create a camera capture object configured for the highest practical quality."""
-    camera_backends = [
-        getattr(cv2, 'CAP_DSHOW', cv2.CAP_ANY),
-        getattr(cv2, 'CAP_MSMF', cv2.CAP_ANY),
-        cv2.CAP_ANY,
-    ]
-
-    capture = None
-    for backend in camera_backends:
-        capture = cv2.VideoCapture(0, backend)
-        if capture.isOpened():
-            break
-
-    if capture is None or not capture.isOpened():
-        return None
-
-    # Keep camera output moderate for smoother streaming on typical laptops.
-    capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    capture.set(cv2.CAP_PROP_FPS, 30)
-    capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-    return capture
 
 def build_face_image_url(image_path):
-    """Convert stored image path to a browser-safe static URL."""
+    """Convert stored image path or URL to a browser-safe URL."""
     if not image_path:
         return None
-
-    normalized_path = image_path.replace('\\', '/')
-    if normalized_path.startswith('static/'):
-        normalized_path = normalized_path[len('static/'):]
-
-    return url_for('static', filename=normalized_path)
+    from storage_utils import get_face_image_url
+    return get_face_image_url(image_path)
 
 def append_face_image_urls(records, image_index):
     """Append face image URL as an extra field to tuple records."""
@@ -102,12 +68,7 @@ def append_face_image_urls(records, image_index):
         output.append(tuple(list(record) + [build_face_image_url(face_image_path)]))
     return output
 
-def encode_status_frame(message):
-    """Build a simple MJPEG frame when the camera cannot provide video."""
-    frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    cv2.putText(frame, message, (42, 235), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (255, 255, 255), 2, cv2.LINE_AA)
-    ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-    return buffer.tobytes() if ret else b''
+
 
 # Role-based access control decorators
 def login_required(f):
@@ -919,14 +880,9 @@ def register_face():
             return jsonify({'success': False, 'message': 'No image selected'})
         
         if file and allowed_file(file.filename):
-            filename = secure_filename(f"user_{session['user_id']}_{file.filename}")
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(file_path)
-
+            file_bytes = file.read()
             request_type = 'update' if has_face_registered(session['user_id']) else 'initial'
-            success, message = submit_face_approval_request(session['user_id'], file_path, request_type)
-            if not success and os.path.exists(file_path):
-                os.remove(file_path)
+            success, message = submit_face_approval_request(session['user_id'], file_bytes, request_type)
             return jsonify({'success': success, 'message': message})
         
         return jsonify({'success': False, 'message': 'Invalid file format'})
@@ -946,107 +902,40 @@ def attendance():
         subjects=get_subjects()
     )
 
-def generate_frames(mirror_preview=False, recognition_interval=5, jpeg_quality=75):
-    global camera, latest_frame
-    with camera_lock:
-        if camera is not None:
-            camera.release()
-        camera = create_camera_capture()
-        latest_frame = None
-        local_camera = camera
+# Server-side camera and feed generation removed. Camera is now captured client-side via WebRTC.
 
-    if local_camera is None:
-        frame = encode_status_frame('Camera not available')
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-        return
-
-    local_frame_index = 0
-    local_face_locations = []
-    local_face_data = []
-
-    try:
-        while True:
-            success, frame = local_camera.read()
-            if not success:
-                fallback = encode_status_frame('Camera frame unavailable')
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + fallback + b'\r\n')
-                break
-
-            if mirror_preview:
-                frame = cv2.flip(frame, 1)
-
-            with frame_lock:
-                latest_frame = frame.copy()
-
-            local_frame_index += 1
-            if local_frame_index % recognition_interval == 0 or not local_face_locations:
-                local_face_locations, local_face_data = recognize_faces_in_frame(frame)
-
-            face_locations = local_face_locations
-            face_data = local_face_data
-
-
-            for i, ((top, right, bottom, left), (name, user_data)) in enumerate(zip(face_locations, face_data)):
-                user_id = user_data[0]
-                confidence = user_data[1]
-
-                # Simple presence-based liveness: face recognised → verified immediately
-                if user_id:
-                    liveness_tracker[user_id] = {'verified': True}
-                    box_color    = (0, 200, 80)   # Green
-                    status_label = "Face Verified"
-                else:
-                    box_color    = (0, 100, 255)  # Orange/red for unknown
-                    status_label = "Unknown Face"
-
-                cv2.rectangle(frame, (left, top), (right, bottom), box_color, 2)
-                cv2.rectangle(frame, (left, bottom - 40), (right, bottom), box_color, cv2.FILLED)
-                font = cv2.FONT_HERSHEY_DUPLEX
-                cv2.putText(frame, name,         (left + 6, bottom - 22), font, 0.52, (255, 255, 255), 1)
-                cv2.putText(frame, status_label, (left + 6, bottom - 6),  font, 0.45, (255, 255, 255), 1)
-
-
-            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
-            if not ret:
-                continue
-            frame = buffer.tobytes()
-
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-    finally:
-        with camera_lock:
-            if camera is local_camera:
-                local_camera.release()
-                camera = None
-
-@app.route('/capture_frame')
-@login_required
-def capture_frame():
-    with frame_lock:
-        frame = None if latest_frame is None else latest_frame.copy()
-
-    if frame is None:
-        return jsonify({'success': False, 'message': 'Camera feed is not ready yet'}), 503
-
-    ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-    if not ret:
-        return jsonify({'success': False, 'message': 'Failed to capture frame'}), 500
-
-    return Response(buffer.tobytes(), mimetype='image/jpeg')
-
-@app.route('/video_feed')
-@login_required
-def video_feed():
-    return Response(generate_frames(mirror_preview=False, recognition_interval=5, jpeg_quality=75),
-                   mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/video_feed_register')
+@app.route('/recognize_frame', methods=['POST'])
 @student_required
-def video_feed_register():
-    return Response(generate_frames(mirror_preview=True, recognition_interval=8, jpeg_quality=70),
-                   mimetype='multipart/x-mixed-replace; boundary=frame')
+def recognize_frame():
+    user_id = session['user_id']
+    data = request.json
+    if not data or 'image' not in data:
+        return jsonify({'success': False, 'message': 'No image data sent'})
+    
+    import base64
+    try:
+        img_data = data['image'].split(',')[1] if ',' in data['image'] else data['image']
+        img_bytes = base64.b64decode(img_data)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    except Exception:
+        return jsonify({'success': False, 'message': 'Failed to decode image'})
+        
+    face_locations, face_data = recognize_faces_in_frame(frame)
+    user_recognized = False
+    confidence = 0
+    
+    for (name, user_data) in face_data:
+        if user_data[0] == user_id:
+            user_recognized = True
+            confidence = user_data[1]
+            break
+            
+    if user_recognized:
+        liveness_tracker[user_id] = {'verified': True}
+        return jsonify({'success': True, 'verified': True, 'confidence': confidence})
+    else:
+        return jsonify({'success': False, 'verified': False})
 
 @app.route('/mark_attendance', methods=['POST'])
 @student_required
@@ -1059,10 +948,10 @@ def mark_attendance():
     if not active_session:
         return jsonify({'success': False, 'message': f'Attendance is blocked. There is no active session open for subject "{subject}". Please wait for your lecturer to open the session.'})
     
-    # 1. Liveness check
+    # 1. Presence / verification check
     tracker = liveness_tracker.get(user_id)
     if not tracker or not tracker.get('verified'):
-        return jsonify({'success': False, 'message': 'Liveness verification failed. Please blink your eyes in front of the camera.'})
+        return jsonify({'success': False, 'message': 'Face verification not complete. Please look at the camera first.'})
 
     # 2. Geofencing check
     settings = get_attendance_settings()
@@ -1087,32 +976,11 @@ def mark_attendance():
             if dist > settings['geofencing_radius']:
                 return jsonify({'success': False, 'message': f'You are outside the campus boundary. Distance: {dist:.1f}m (Max: {settings["geofencing_radius"]}m)'})
 
-    # 3. Face verification
-    with frame_lock:
-        frame = None if latest_frame is None else latest_frame.copy()
-
-    if frame is None:
-        return jsonify({'success': False, 'message': 'Camera feed is not ready. Wait for the preview and try again.'})
-
-    face_locations, face_data = recognize_faces_in_frame(frame)
-    
-    user_recognized = False
-    confidence = 0
-    
-    for (name, user_data) in face_data:
-        if user_data[0] == user_id:  # Check if current user is recognized
-            user_recognized = True
-            confidence = user_data[1]
-            break
-    
-    if user_recognized:
-        result = save_attendance(user_id, confidence, subject)
-        # Reset tracker for next scan
-        if user_id in liveness_tracker:
-            liveness_tracker[user_id] = { 'blink_count': 0, 'last_state': 'open', 'verified': False }
-        return jsonify(result)
-    else:
-        return jsonify({'success': False, 'message': 'Face not recognized. Please ensure your face is clearly visible.'})
+    # 3. Save attendance
+    result = save_attendance(user_id, 0.95, subject)
+    if user_id in liveness_tracker:
+        liveness_tracker[user_id] = {'verified': False}
+    return jsonify(result)
 
 @app.route('/mark_attendance_with_photo', methods=['POST'])
 @student_required

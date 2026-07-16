@@ -6,6 +6,7 @@ import pickle
 import os
 from werkzeug.utils import secure_filename
 from database import DB_PATH
+from storage_utils import upload_face_image, delete_face_image, face_image_filename
 
 _face_encoding_cache = None
 
@@ -20,13 +21,18 @@ def allowed_file(filename):
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def save_face_encoding(user_id, image_path):
-    """Extract and save face encoding from image"""
+def save_face_encoding(user_id, image_path_or_bytes):
+    """Extract and save face encoding from image (path or bytes)"""
     try:
-        # Load image
-        image = face_recognition.load_image_file(image_path)
+        if isinstance(image_path_or_bytes, (bytes, bytearray)):
+            nparr = np.frombuffer(image_path_or_bytes, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            image = image[:, :, ::-1]  # Convert BGR to RGB
+            image_path = ""
+        else:
+            image = face_recognition.load_image_file(image_path_or_bytes)
+            image_path = image_path_or_bytes
         
-        # Get face encodings
         face_encodings = face_recognition.face_encodings(image)
         
         if len(face_encodings) == 0:
@@ -35,14 +41,11 @@ def save_face_encoding(user_id, image_path):
         if len(face_encodings) > 1:
             return False, "Multiple faces detected. Please use an image with only one face"
         
-        # Get the first (and only) face encoding
         face_encoding = face_encodings[0]
         
-        # Save to database
-        conn = sqlite3.connect(DB_PATH)
+        from db_compat import get_connection
+        conn = get_connection()
         cursor = conn.cursor()
-        
-        # Convert numpy array to blob
         encoding_blob = pickle.dumps(face_encoding)
         
         cursor.execute('''
@@ -59,10 +62,19 @@ def save_face_encoding(user_id, image_path):
     except Exception as e:
         return False, f"Error processing image: {str(e)}"
 
-def submit_face_approval_request(user_id, image_path, request_type):
+def submit_face_approval_request(user_id, file_bytes_or_path, request_type):
     """Extract a face encoding and queue it for admin approval."""
     try:
-        image = face_recognition.load_image_file(image_path)
+        # Support both file path (legacy) and raw bytes (browser upload)
+        if isinstance(file_bytes_or_path, (bytes, bytearray)):
+            file_bytes = file_bytes_or_path
+            nparr = np.frombuffer(file_bytes, np.uint8)
+            bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            image = bgr[:, :, ::-1]  # BGR → RGB
+        else:
+            file_bytes = open(file_bytes_or_path, 'rb').read()
+            image = face_recognition.load_image_file(file_bytes_or_path)
+
         face_encodings = face_recognition.face_encodings(image)
 
         if len(face_encodings) == 0:
@@ -73,7 +85,12 @@ def submit_face_approval_request(user_id, image_path, request_type):
 
         encoding_blob = pickle.dumps(face_encodings[0])
 
-        conn = sqlite3.connect(DB_PATH)
+        # Upload image to storage (Supabase or local)
+        filename = face_image_filename(user_id)
+        stored_url = upload_face_image(file_bytes, filename)
+
+        from db_compat import get_connection
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('''
             SELECT image_path
@@ -91,16 +108,14 @@ def submit_face_approval_request(user_id, image_path, request_type):
         cursor.execute('''
             INSERT INTO face_approval_requests (user_id, encoding, image_path, request_type)
             VALUES (?, ?, ?, ?)
-        ''', (user_id, encoding_blob, image_path, request_type))
+        ''', (user_id, encoding_blob, stored_url, request_type))
         conn.commit()
         conn.close()
 
+        # Delete old pending images from storage
         for old_path in old_pending_paths:
-            if old_path and old_path != image_path and os.path.exists(old_path):
-                try:
-                    os.remove(old_path)
-                except OSError:
-                    pass
+            if old_path and old_path != stored_url:
+                delete_face_image(old_path)
 
         return True, "Face submitted for admin approval"
 
@@ -118,7 +133,8 @@ def get_all_face_encodings(force_reload=False):
             list(_face_encoding_cache['known_names'])
         )
 
-    conn = sqlite3.connect(DB_PATH)
+    from db_compat import get_connection
+    conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -206,7 +222,8 @@ def recognize_faces_in_frame(frame):
 
 def has_face_registered(user_id):
     """Check if user has registered face"""
-    conn = sqlite3.connect(DB_PATH)
+    from db_compat import get_connection
+    conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute('SELECT COUNT(*) FROM face_encodings WHERE user_id = ?', (user_id,))

@@ -18,7 +18,9 @@
         </div>
 
         <div id="cameraContent" class="tab-content active">
-            <div class="camera-box"><img id="cameraFeed" src="{{ url_for('video_feed_register') }}" alt="Live camera feed"></div>
+            <div class="camera-box">
+                <video id="webcam" autoplay playsinline muted style="width: 100%; border-radius: 8px; transform: scaleX(-1);"></video>
+            </div>
             <div class="button-row" style="margin-top: 16px;">
                 <button id="captureButton" class="btn btn-primary" type="button">Capture photo</button>
                 <button id="registerCaptureButton" class="btn btn-success" type="button" disabled>Submit captured face</button>
@@ -59,11 +61,27 @@
 {% block scripts %}
 <script>
     let capturedBlob = null;
+    const video = document.getElementById('webcam');
     const message = document.getElementById('faceMessage');
     const captureButton = document.getElementById('captureButton');
     const registerCaptureButton = document.getElementById('registerCaptureButton');
     const registerUploadButton = document.getElementById('registerUploadButton');
     const fileInput = document.getElementById('faceImage');
+    
+    // Start camera stream on page load
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 640, height: 480, facingMode: "user" }
+            });
+            video.srcObject = stream;
+        } catch (err) {
+            console.error("Camera access error:", err);
+            showMessage('Unable to access device camera.', false);
+        }
+    }
+    
+    startCamera();
 
     document.querySelectorAll('[data-tab]').forEach((tab) => {
         tab.addEventListener('click', () => {
@@ -74,18 +92,30 @@
         });
     });
 
-    captureButton.addEventListener('click', async () => {
+    captureButton.addEventListener('click', () => {
         captureButton.disabled = true;
         captureButton.textContent = 'Capturing...';
+        
         try {
-            const response = await fetch(`{{ url_for("capture_frame") }}?ts=${Date.now()}`, {cache: 'no-store'});
-            if (!response.ok) throw new Error();
-            capturedBlob = await response.blob();
-            const url = URL.createObjectURL(capturedBlob);
-            document.getElementById('capturedPreview').innerHTML = `<img class="preview-image" src="${url}" alt="Captured face">`;
-            registerCaptureButton.disabled = false;
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            
+            // Mirror flip frame to match preview
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            canvas.toBlob((blob) => {
+                capturedBlob = blob;
+                const url = URL.createObjectURL(blob);
+                document.getElementById('capturedPreview').innerHTML = `<img class="preview-image" src="${url}" alt="Captured face" style="max-width:100%; border-radius:8px;">`;
+                registerCaptureButton.disabled = false;
+            }, 'image/jpeg', 0.9);
+            
         } catch (error) {
-            showMessage('The camera is not ready. Wait for the live feed and try again.', false);
+            showMessage('Failed to capture frame from webcam.', false);
         } finally {
             captureButton.disabled = false;
             captureButton.textContent = 'Capture again';
@@ -95,7 +125,7 @@
     fileInput.addEventListener('change', () => {
         const file = fileInput.files[0];
         if (!file) return;
-        document.getElementById('uploadPreview').innerHTML = `<img class="preview-image" src="${URL.createObjectURL(file)}" alt="Selected face">`;
+        document.getElementById('uploadPreview').innerHTML = `<img class="preview-image" src="${URL.createObjectURL(file)}" alt="Selected face" style="max-width:100%; border-radius:8px;">`;
         registerUploadButton.disabled = false;
     });
 
