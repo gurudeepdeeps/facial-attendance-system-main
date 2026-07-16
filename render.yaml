@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sjb-attendance
+    name: SJBIT-Attendance
     env: python
     pythonVersion: 3.11.9
     buildCommand: pip install -r requirements.txt
