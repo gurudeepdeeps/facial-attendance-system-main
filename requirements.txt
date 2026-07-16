@@ -2,6 +2,7 @@ setuptools
 wheel
 Flask
 opencv-python-headless
+https://github.com/z-mahmud22/Dlib_Wheels/raw/main/dlib-19.24.1-cp311-cp311-linux_x86_64.whl
 face-recognition
 numpy==1.24.4
 Pillow
