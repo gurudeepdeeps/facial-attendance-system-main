@@ -1497,7 +1497,7 @@ def get_monthly_attendance_report(month=None):
             ) latest ON latest.max_id = f.id
         ) lf ON lf.user_id = u.id
         WHERE u.role = 'student' AND u.status = 'approved'
-        GROUP BY u.id
+        GROUP BY u.id, lf.image_path
         ORDER BY u.full_name
     ''', (month,))
     rows = cursor.fetchall()
