@@ -33,217 +33,281 @@ if SUPABASE_URL and SUPABASE_KEY:
 
 def init_db():
     """Initialize the database with required tables"""
+    from db_compat import IS_POSTGRES
     conn = get_connection()
     cursor = conn.cursor()
-    
-    # Users table
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS users (
-            id {PK},
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            full_name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            role TEXT DEFAULT 'student',
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            supabase_uid TEXT
-        )
-    ''')
-    ensure_column(cursor, 'users', 'supabase_uid', 'TEXT')
-    legacy_role = 'em' + 'ployee'
-    cursor.execute('UPDATE users SET role = ? WHERE role = ?', ('student', legacy_role))
-    
-    # Face encodings table
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS face_encodings (
-            id {PK},
-            user_id INTEGER NOT NULL,
-            encoding {BLOB} NOT NULL,
-            image_path TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
 
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS face_approval_requests (
-            id {PK},
-            user_id INTEGER NOT NULL,
-            encoding {BLOB} NOT NULL,
-            image_path TEXT NOT NULL,
-            request_type TEXT NOT NULL,
-            status TEXT DEFAULT 'pending',
-            requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            reviewed_at TIMESTAMP,
-            reviewed_by INTEGER,
-            FOREIGN KEY (user_id) REFERENCES users (id),
-            FOREIGN KEY (reviewed_by) REFERENCES users (id)
-        )
-    ''')
-    
-    # Attendance records table
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS attendance (
-            id {PK},
-            user_id INTEGER NOT NULL,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            status TEXT DEFAULT 'present',
-            confidence REAL,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-
-    ensure_column(cursor, 'attendance', 'attendance_date', 'TEXT')
-    ensure_column(cursor, 'attendance', 'check_in_time', 'TIMESTAMP')
-    ensure_column(cursor, 'attendance', 'check_out_time', 'TIMESTAMP')
-    ensure_column(cursor, 'attendance', 'check_in_confidence', 'REAL')
-    ensure_column(cursor, 'attendance', 'check_out_confidence', 'REAL')
-    ensure_column(cursor, 'attendance', 'remarks', 'TEXT')
-    ensure_column(cursor, 'attendance', 'subject', "TEXT DEFAULT 'General'")
-
-    # These migration updates only apply to SQLite (legacy data fix).
-    # On PostgreSQL the columns are created correctly from the start.
-    from db_compat import IS_POSTGRES
-    if not IS_POSTGRES:
-        cursor.execute('''
-            UPDATE attendance
-            SET attendance_date = DATE(timestamp, 'localtime')
-            WHERE attendance_date IS NULL
-        ''')
-        cursor.execute('''
-            UPDATE attendance
-            SET check_in_time = timestamp
-            WHERE check_in_time IS NULL
-        ''')
-        cursor.execute('''
-            UPDATE attendance
-            SET check_in_confidence = confidence
-            WHERE check_in_confidence IS NULL
-        ''')
-
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS attendance_settings (
-            id {INT_PK_SINGLETON},
-            reporting_time TEXT NOT NULL DEFAULT '09:15',
-            low_attendance_threshold INTEGER NOT NULL DEFAULT 75,
-            working_days_per_month INTEGER NOT NULL DEFAULT 22,
-            college_lat REAL DEFAULT 0.0,
-            college_lon REAL DEFAULT 0.0,
-            geofencing_radius REAL DEFAULT 150.0,
-            geofencing_enabled INTEGER DEFAULT 0,
-            smtp_host TEXT DEFAULT 'smtp.gmail.com',
-            smtp_port INTEGER DEFAULT 587,
-            smtp_user TEXT DEFAULT \'\',
-            smtp_password TEXT DEFAULT \'\',
-            smtp_sender TEXT DEFAULT \'\',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-
-    # Add settings columns to existing attendance_settings if they aren't present
-    ensure_column(cursor, 'attendance_settings', 'college_lat', 'REAL DEFAULT 0.0')
-    ensure_column(cursor, 'attendance_settings', 'college_lon', 'REAL DEFAULT 0.0')
-    ensure_column(cursor, 'attendance_settings', 'geofencing_radius', 'REAL DEFAULT 150.0')
-    ensure_column(cursor, 'attendance_settings', 'geofencing_enabled', 'INTEGER DEFAULT 0')
-    ensure_column(cursor, 'attendance_settings', 'smtp_host', "TEXT DEFAULT 'smtp.gmail.com'")
-    ensure_column(cursor, 'attendance_settings', 'smtp_port', 'INTEGER DEFAULT 587')
-    ensure_column(cursor, 'attendance_settings', 'smtp_user', "TEXT DEFAULT ''")
-    ensure_column(cursor, 'attendance_settings', 'smtp_password', "TEXT DEFAULT ''")
-    ensure_column(cursor, 'attendance_settings', 'smtp_sender', "TEXT DEFAULT ''")
-
-    cursor.execute('SELECT COUNT(*) FROM attendance_settings WHERE id = 1')
-    if cursor.fetchone()[0] == 0:
-        cursor.execute('''
-            INSERT INTO attendance_settings (id, reporting_time, low_attendance_threshold, working_days_per_month)
-            VALUES (1, ?, ?, ?)
-        ''', (
-            DEFAULT_SETTINGS['reporting_time'],
-            DEFAULT_SETTINGS['low_attendance_threshold'],
-            DEFAULT_SETTINGS['working_days_per_month'],
-        ))
-
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS parent_students (
-            id {PK},
-            parent_id INTEGER NOT NULL,
-            student_id INTEGER NOT NULL,
-            relationship TEXT DEFAULT 'Parent',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(parent_id, student_id),
-            FOREIGN KEY (parent_id) REFERENCES users (id),
-            FOREIGN KEY (student_id) REFERENCES users (id)
-        )
-    ''')
-    
-    conn.commit()
-    
-    # Create default admin account if not exists
-    cursor.execute('SELECT COUNT(*) FROM users WHERE role = ?', ('admin',))
-    if cursor.fetchone()[0] == 0:
-        admin_email = 'admin@attendance.system'
-        admin_pass = 'admin123'
-        admin_password_hash = hash_password(admin_pass)
-        
-        supabase_uid = None
-        if supabase_client:
+    def _exec(sql, params=None):
+        """Execute SQL with error isolation - on PostgreSQL, use savepoints."""
+        try:
+            if params:
+                cursor.execute(sql, params)
+            else:
+                cursor.execute(sql)
+        except Exception as e:
+            # Rollback just this statement so the transaction remains usable
             try:
-                auth_response = supabase_client.auth.sign_up({
-                    "email": admin_email,
-                    "password": admin_pass,
-                    "options": {
-                        "data": {
+                if IS_POSTGRES:
+                    cursor._cur.execute('ROLLBACK TO SAVEPOINT _init_sp')
+                else:
+                    conn.rollback()
+            except Exception:
+                pass
+            import sys
+            print(f"[init_db] Non-fatal error (skipped): {e}", file=sys.stderr)
+
+    def _safe_block(fn):
+        """Run a block of statements as an isolated savepoint."""
+        try:
+            if IS_POSTGRES:
+                cursor._cur.execute('SAVEPOINT _init_sp')
+            fn()
+            if IS_POSTGRES:
+                cursor._cur.execute('RELEASE SAVEPOINT _init_sp')
+            conn.commit()
+        except Exception as e:
+            try:
+                if IS_POSTGRES:
+                    cursor._cur.execute('ROLLBACK TO SAVEPOINT _init_sp')
+                    cursor._cur.execute('RELEASE SAVEPOINT _init_sp')
+                else:
+                    conn.rollback()
+            except Exception:
+                pass
+            import sys
+            print(f"[init_db] Block error (skipped): {e}", file=sys.stderr)
+
+    # ── Users table ──────────────────────────────────────────────────────────
+    def _users():
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS users (
+                id {PK},
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                role TEXT DEFAULT 'student',
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                supabase_uid TEXT
+            )
+        ''')
+        ensure_column(cursor, 'users', 'supabase_uid', 'TEXT')
+        legacy_role = 'em' + 'ployee'
+        cursor.execute('UPDATE users SET role = ? WHERE role = ?', ('student', legacy_role))
+    _safe_block(_users)
+
+    # ── Face encodings table ──────────────────────────────────────────────────
+    def _face_enc():
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS face_encodings (
+                id {PK},
+                user_id INTEGER NOT NULL,
+                encoding {BLOB} NOT NULL,
+                image_path TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+    _safe_block(_face_enc)
+
+    # ── Face approval requests table ──────────────────────────────────────────
+    def _face_req():
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS face_approval_requests (
+                id {PK},
+                user_id INTEGER NOT NULL,
+                encoding {BLOB} NOT NULL,
+                image_path TEXT NOT NULL,
+                request_type TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP,
+                reviewed_by INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (reviewed_by) REFERENCES users (id)
+            )
+        ''')
+    _safe_block(_face_req)
+
+    # ── Attendance table + column migrations ──────────────────────────────────
+    def _attendance():
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS attendance (
+                id {PK},
+                user_id INTEGER NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'present',
+                confidence REAL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+    _safe_block(_attendance)
+
+    # Add columns one-by-one so a single failure doesn't abort the rest
+    for col, typedef in [
+        ('attendance_date', 'DATE' if IS_POSTGRES else 'TEXT'),
+        ('check_in_time',   'TIMESTAMP'),
+        ('check_out_time',  'TIMESTAMP'),
+        ('check_in_confidence',  'REAL'),
+        ('check_out_confidence', 'REAL'),
+        ('remarks',  'TEXT'),
+        ('subject',  "TEXT DEFAULT 'General'"),
+    ]:
+        _safe_block(lambda c=col, t=typedef: ensure_column(cursor, 'attendance', c, t))
+
+    # SQLite-only legacy data migration (column was previously named 'timestamp')
+    if not IS_POSTGRES:
+        def _sqlite_migration():
+            cursor.execute('''
+                UPDATE attendance SET attendance_date = DATE(timestamp, 'localtime')
+                WHERE attendance_date IS NULL
+            ''')
+            cursor.execute('''
+                UPDATE attendance SET check_in_time = timestamp
+                WHERE check_in_time IS NULL
+            ''')
+            cursor.execute('''
+                UPDATE attendance SET check_in_confidence = confidence
+                WHERE check_in_confidence IS NULL
+            ''')
+        _safe_block(_sqlite_migration)
+
+    # ── Attendance settings ───────────────────────────────────────────────────
+    def _settings():
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS attendance_settings (
+                id {INT_PK_SINGLETON},
+                reporting_time TEXT NOT NULL DEFAULT '09:15',
+                low_attendance_threshold INTEGER NOT NULL DEFAULT 75,
+                working_days_per_month INTEGER NOT NULL DEFAULT 22,
+                college_lat REAL DEFAULT 0.0,
+                college_lon REAL DEFAULT 0.0,
+                geofencing_radius REAL DEFAULT 150.0,
+                geofencing_enabled INTEGER DEFAULT 0,
+                smtp_host TEXT DEFAULT 'smtp.gmail.com',
+                smtp_port INTEGER DEFAULT 587,
+                smtp_user TEXT DEFAULT '',
+                smtp_password TEXT DEFAULT '',
+                smtp_sender TEXT DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+    _safe_block(_settings)
+
+    for col, typedef in [
+        ('college_lat',          'REAL DEFAULT 0.0'),
+        ('college_lon',          'REAL DEFAULT 0.0'),
+        ('geofencing_radius',    'REAL DEFAULT 150.0'),
+        ('geofencing_enabled',   'INTEGER DEFAULT 0'),
+        ('smtp_host',            "TEXT DEFAULT 'smtp.gmail.com'"),
+        ('smtp_port',            'INTEGER DEFAULT 587'),
+        ('smtp_user',            "TEXT DEFAULT ''"),
+        ('smtp_password',        "TEXT DEFAULT ''"),
+        ('smtp_sender',          "TEXT DEFAULT ''"),
+    ]:
+        _safe_block(lambda c=col, t=typedef: ensure_column(cursor, 'attendance_settings', c, t))
+
+    def _settings_seed():
+        cursor.execute('SELECT COUNT(*) FROM attendance_settings WHERE id = 1')
+        if cursor.fetchone()[0] == 0:
+            cursor.execute('''
+                INSERT INTO attendance_settings (id, reporting_time, low_attendance_threshold, working_days_per_month)
+                VALUES (1, ?, ?, ?)
+            ''', (
+                DEFAULT_SETTINGS['reporting_time'],
+                DEFAULT_SETTINGS['low_attendance_threshold'],
+                DEFAULT_SETTINGS['working_days_per_month'],
+            ))
+    _safe_block(_settings_seed)
+
+    # ── Parent-students link table ────────────────────────────────────────────
+    def _parent_students():
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS parent_students (
+                id {PK},
+                parent_id INTEGER NOT NULL,
+                student_id INTEGER NOT NULL,
+                relationship TEXT DEFAULT 'Parent',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(parent_id, student_id),
+                FOREIGN KEY (parent_id) REFERENCES users (id),
+                FOREIGN KEY (student_id) REFERENCES users (id)
+            )
+        ''')
+    _safe_block(_parent_students)
+
+    # ── Default admin account ─────────────────────────────────────────────────
+    def _admin():
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = ?', ('admin',))
+        if cursor.fetchone()[0] == 0:
+            admin_email = 'admin@attendance.system'
+            admin_pass  = 'admin123'
+            admin_password_hash = hash_password(admin_pass)
+            supabase_uid = None
+            if supabase_client:
+                try:
+                    auth_response = supabase_client.auth.sign_up({
+                        "email": admin_email,
+                        "password": admin_pass,
+                        "options": {"data": {
                             "username": "admin",
                             "full_name": "System Administrator",
                             "role": "admin"
-                        }
-                    }
-                })
-                if auth_response and auth_response.user:
-                    supabase_uid = auth_response.user.id
-            except Exception:
-                pass
+                        }}
+                    })
+                    if auth_response and auth_response.user:
+                        supabase_uid = auth_response.user.id
+                except Exception:
+                    pass
+            cursor.execute('''
+                INSERT INTO users (username, password_hash, full_name, email, role, status, supabase_uid)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', ('admin', admin_password_hash, 'System Administrator',
+                  admin_email, 'admin', 'approved', supabase_uid))
+    _safe_block(_admin)
 
-        cursor.execute('''
-            INSERT INTO users (username, password_hash, full_name, email, role, status, supabase_uid)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', ('admin', admin_password_hash, 'System Administrator', admin_email, 'admin', 'approved', supabase_uid))
-        conn.commit()
+    # ── Attendance sessions table ─────────────────────────────────────────────
+    def _sessions():
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS attendance_sessions (
+                id {PK},
+                lecturer_id INTEGER NOT NULL,
+                subject TEXT NOT NULL,
+                status TEXT DEFAULT 'open',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                closed_at TIMESTAMP,
+                latitude REAL,
+                longitude REAL,
+                FOREIGN KEY (lecturer_id) REFERENCES users (id)
+            )
+        ''')
+    _safe_block(_sessions)
 
-
-
-    # Create attendance_sessions table
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS attendance_sessions (
-            id {PK},
-            lecturer_id INTEGER NOT NULL,
-            subject TEXT NOT NULL,
-            status TEXT DEFAULT 'open',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            closed_at TIMESTAMP,
-            latitude REAL,
-            longitude REAL,
-            FOREIGN KEY (lecturer_id) REFERENCES users (id)
-        )
-    ''')
-
-    ensure_column(cursor, 'attendance_sessions', 'latitude', 'REAL')
-    ensure_column(cursor, 'attendance_sessions', 'longitude', 'REAL')
+    _safe_block(lambda: ensure_column(cursor, 'attendance_sessions', 'latitude', 'REAL'))
+    _safe_block(lambda: ensure_column(cursor, 'attendance_sessions', 'longitude', 'REAL'))
 
     # Clean up demo lecturers if they exist
-    cursor.execute("DELETE FROM users WHERE role = 'lecturer' AND username IN ('lecturer1', 'lecturer2', 'lecturer3', 'lecturer4')")
-    conn.commit()
+    _safe_block(lambda: cursor.execute(
+        "DELETE FROM users WHERE role = 'lecturer' AND username IN ('lecturer1','lecturer2','lecturer3','lecturer4')"
+    ))
 
-    # Create subjects table
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS subjects (
-            id {PK},
-            name TEXT UNIQUE NOT NULL
-        )
-    ''')
-    conn.commit()
-    
-    conn.close()
+    # ── Subjects table ────────────────────────────────────────────────────────
+    def _subjects():
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS subjects (
+                id {PK},
+                name TEXT UNIQUE NOT NULL
+            )
+        ''')
+    _safe_block(_subjects)
+
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
 
 def hash_password(password):
     """Hash password using SHA-256"""
