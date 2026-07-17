@@ -2,7 +2,7 @@ setuptools
 wheel
 Flask
 opencv-python-headless
-dlib
+dlib-bin
 face-recognition
 numpy==1.24.4
 Pillow
