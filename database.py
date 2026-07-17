@@ -2,6 +2,7 @@ import hashlib
 from datetime import datetime, date, timedelta
 import os
 
+from db_compat import (
     get_connection, IS_POSTGRES,
     PK, BLOB, INT_PK_SINGLETON,
     column_exists, ensure_column,
