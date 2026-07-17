@@ -2,6 +2,8 @@ setuptools
 wheel
 Flask
 opencv-python-headless
+dlib
+face-recognition
 numpy==1.24.4
 Pillow
 werkzeug
@@ -9,4 +11,3 @@ psycopg2-binary
 supabase
 gunicorn
 python-dotenv
-gradio==4.44.1
