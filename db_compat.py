@@ -31,11 +31,11 @@ else:
 
 # ─── SQL normalisation ────────────────────────────────────────────────────────
 _SQLITE_TO_PG = [
-    ("DATE('now', 'localtime')",               "CURRENT_DATE"),
+    ("DATE('now', 'localtime')",               "CURRENT_DATE::text"),
     ("DATETIME('now', 'localtime')",           "NOW()"),
-    ("DATE(timestamp, 'localtime')",           "(timestamp AT TIME ZONE 'UTC')::date"),
-    ("DATE(check_in_time, 'localtime')",       "(check_in_time AT TIME ZONE 'UTC')::date"),
-    ("DATE(closed_at, 'localtime')",           "(closed_at AT TIME ZONE 'UTC')::date"),
+    ("DATE(timestamp, 'localtime')",           "((timestamp AT TIME ZONE 'UTC')::date)::text"),
+    ("DATE(check_in_time, 'localtime')",       "((check_in_time AT TIME ZONE 'UTC')::date)::text"),
+    ("DATE(closed_at, 'localtime')",           "((closed_at AT TIME ZONE 'UTC')::date)::text"),
     ("datetime(a.check_in_time, 'localtime')", "a.check_in_time"),
     ("datetime(a.check_out_time, 'localtime')","a.check_out_time"),
     ("datetime(check_in_time, 'localtime')",   "check_in_time"),
