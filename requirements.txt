@@ -4,7 +4,7 @@ Flask
 opencv-python-headless
 dlib-bin
 face-recognition
-numpy==1.24.4
+numpy>=1.24.0
 Pillow
 werkzeug
 psycopg2-binary
