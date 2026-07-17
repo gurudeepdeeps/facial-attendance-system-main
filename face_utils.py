@@ -70,10 +70,12 @@ def submit_face_approval_request(user_id, file_bytes_or_path, request_type):
             file_bytes = file_bytes_or_path
             nparr = np.frombuffer(file_bytes, np.uint8)
             bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            image = bgr[:, :, ::-1]  # BGR → RGB
+            image = bgr[:, :, ::-1]  # Convert BGR to RGB
+            image = np.ascontiguousarray(image, dtype=np.uint8)
         else:
             file_bytes = open(file_bytes_or_path, 'rb').read()
             image = face_recognition.load_image_file(file_bytes_or_path)
+            image = np.ascontiguousarray(image, dtype=np.uint8)
 
         face_encodings = face_recognition.face_encodings(image)
 
