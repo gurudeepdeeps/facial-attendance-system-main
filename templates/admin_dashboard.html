@@ -204,8 +204,28 @@
                     <tr>
                         <td><strong>{{ item[2] }}</strong><div class="muted">@{{ item[3] }}</div></td>
                         <td>{{ item[5] }}</td>
-                        <td>{{ item[6][11:19] if item[6] else '-' }}</td>
-                        <td>{{ item[7][11:19] if item[7] else 'Pending' }}</td>
+                        <td>
+                            {% if item[6] %}
+                                {% if item[6] is string %}
+                                    {{ item[6][11:19] }}
+                                {% else %}
+                                    {{ item[6].strftime('%H:%M:%S') }}
+                                {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item[7] %}
+                                {% if item[7] is string %}
+                                    {{ item[7][11:19] }}
+                                {% else %}
+                                    {{ item[7].strftime('%H:%M:%S') }}
+                                {% endif %}
+                            {% else %}
+                                Pending
+                            {% endif %}
+                        </td>
                         <td><span class="badge badge-{{ item[8] }}">{{ item[8]|replace('_', ' ') }}</span></td>
                         <td>{{ '%.2f'|format(item[9] or 0) }}</td>
                     </tr>
