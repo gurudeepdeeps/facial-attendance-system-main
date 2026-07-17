@@ -239,7 +239,14 @@
     const checkInLink = document.getElementById('checkInLink');
     if (checkInLink) {
         checkInLink.addEventListener('click', (event) => {
-            // Check if student is performing check-in or check-out
+            // Check if student has already completed check-in and the check-out is blocked because the session was closed by the lecturer
+            {% if today_record and not today_record.check_out_time %}
+                // If checked in, but the session is closed/none active, block checkout
+                event.preventDefault();
+                alert("Checkout is blocked. The lecturer has closed the attendance session for this subject.");
+                return;
+            {% endif %}
+
             {% if not today_record or not today_record.check_out_time %}
             event.preventDefault();
             const targetUrl = checkInLink.href;
@@ -247,7 +254,7 @@
             const originalText = checkInLink.innerHTML;
             checkInLink.innerHTML = '<span class="spinner" style="border-left-color:#fff;"></span> Verifying Location...';
             checkInLink.style.pointerEvents = 'none';
-
+ 
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {

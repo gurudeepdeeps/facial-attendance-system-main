@@ -897,9 +897,13 @@ def attendance():
     if not has_face_registered(session['user_id']):
         return redirect(url_for('register_face'))
     
+    today_record = get_today_user_attendance(session['user_id'])
+    if today_record and today_record.get('check_out_time'):
+        return redirect(url_for('dashboard'))
+        
     return render_template(
         'attendance.html',
-        today_record=get_today_user_attendance(session['user_id']),
+        today_record=today_record,
         attendance_settings=get_attendance_settings(),
         subjects=get_subjects()
     )
