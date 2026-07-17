@@ -4,7 +4,7 @@ Flask
 opencv-python-headless
 dlib-bin
 face-recognition
-face-recognition-models
+face-recognition-models @ git+https://github.com/ageitgey/face_recognition_models.git
 numpy>=1.24.0
 Pillow
 werkzeug
