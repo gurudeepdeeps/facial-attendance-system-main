@@ -38,6 +38,8 @@ _SQLITE_TO_PG = [
     ("DATE(closed_at, 'localtime')",           "(closed_at AT TIME ZONE 'UTC')::date"),
     ("datetime(a.check_in_time, 'localtime')", "a.check_in_time"),
     ("datetime(a.check_out_time, 'localtime')","a.check_out_time"),
+    ("datetime(check_in_time, 'localtime')",   "check_in_time"),
+    ("datetime(check_out_time, 'localtime')",  "check_out_time"),
 ]
 
 
