@@ -168,4 +168,12 @@ def ensure_column(cursor: CompatCursor, table_name: str,
         if not column_exists(cursor, table_name, column_name):
             cursor._cur.execute(
                 f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
-            )
+# ─── Exception compatibility aliases ──────────────────────────────────────────
+if IS_POSTGRES:
+    import psycopg2
+    DBException = psycopg2.Error
+    IntegrityError = psycopg2.IntegrityError
+else:
+    import sqlite3
+    DBException = sqlite3.Error
+    IntegrityError = sqlite3.IntegrityError
