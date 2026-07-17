@@ -1,3 +1,12 @@
 [phases.setup]
-nixPkgs = ["...", "xorg.libX11", "xorg.libX11.dev", "libGL", "libGLU"]
+nixPkgs = ["...", "xorg.libX11", "xorg.libX11.dev", "libGL", "libGLU", "git"]
 nixLibs = ["...", "xorg.libX11", "xorg.libX11.dev", "libGL", "libGLU"]
+
+[phases.install]
+cmds = [
+  "python -m venv --copies /opt/venv",
+  ". /opt/venv/bin/activate",
+  "pip install --upgrade pip setuptools wheel",
+  "pip install git+https://github.com/ageitgey/face_recognition_models.git",
+  "pip install -r requirements.txt"
+]
