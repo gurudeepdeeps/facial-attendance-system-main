@@ -93,8 +93,28 @@
         {% if today_record %}
             <div class="metric-grid">
                 <div class="metric"><span>Status</span><strong style="font-size: 1.2rem;">{{ today_record.status|replace('_', ' ')|title }}</strong></div>
-                <div class="metric"><span>Check-in</span><strong style="font-size: 1.1rem;">{{ today_record.check_in_time[11:19] if today_record.check_in_time else '-' }}</strong></div>
-                <div class="metric"><span>Check-out</span><strong style="font-size: 1.1rem;">{{ today_record.check_out_time[11:19] if today_record.check_out_time else 'Pending' }}</strong></div>
+                <div class="metric"><span>Check-in</span><strong style="font-size: 1.1rem;">
+                    {% if today_record.check_in_time %}
+                        {% if today_record.check_in_time is string %}
+                            {{ today_record.check_in_time[11:19] }}
+                        {% else %}
+                            {{ today_record.check_in_time.strftime('%H:%M:%S') }}
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </strong></div>
+                <div class="metric"><span>Check-out</span><strong style="font-size: 1.1rem;">
+                    {% if today_record.check_out_time %}
+                        {% if today_record.check_out_time is string %}
+                            {{ today_record.check_out_time[11:19] }}
+                        {% else %}
+                            {{ today_record.check_out_time.strftime('%H:%M:%S') }}
+                        {% endif %}
+                    {% else %}
+                        Pending
+                    {% endif %}
+                </strong></div>
                 <div class="metric"><span>Lifecycle</span><strong style="font-size: 1.1rem;">{{ 'Complete' if today_record.check_out_time else 'Active' }}</strong></div>
             </div>
         {% else %}
@@ -120,8 +140,28 @@
                     <tr>
                         <td>{{ record[0] }}</td>
                         <td><strong>{{ record[6] if record|length > 6 else 'General' }}</strong></td>
-                        <td>{{ record[1][11:19] if record[1] else '-' }}</td>
-                        <td>{{ record[2][11:19] if record[2] else 'Pending' }}</td>
+                        <td>
+                            {% if record[1] %}
+                                {% if record[1] is string %}
+                                    {{ record[1][11:19] }}
+                                {% else %}
+                                    {{ record[1].strftime('%H:%M:%S') }}
+                                {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if record[2] %}
+                                {% if record[2] is string %}
+                                    {{ record[2][11:19] }}
+                                {% else %}
+                                    {{ record[2].strftime('%H:%M:%S') }}
+                                {% endif %}
+                            {% else %}
+                                Pending
+                            {% endif %}
+                        </td>
                         <td><span class="badge badge-{{ record[3] }}">{{ record[3]|replace('_', ' ') }}</span></td>
                         <td>{{ '%.2f'|format(record[4] or 0) }}</td>
                     </tr>
