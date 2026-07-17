@@ -2,10 +2,10 @@ import hashlib
 from datetime import datetime, date, timedelta
 import os
 
-from db_compat import (
     get_connection, IS_POSTGRES,
     PK, BLOB, INT_PK_SINGLETON,
     column_exists, ensure_column,
+    IntegrityError,
 )
 
 DEFAULT_SETTINGS = {
@@ -252,7 +252,7 @@ def create_user(username, password, full_name, email):
         conn.commit()
         conn.close()
         return user_id
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         conn.close()
         return None
 
@@ -271,7 +271,7 @@ def create_parent_user(username, password, full_name, email):
         conn.commit()
         conn.close()
         return parent_id
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         conn.close()
         return None
 
@@ -302,7 +302,7 @@ def update_parent_user(parent_id, username, full_name, email, password=None):
         conn.commit()
         conn.close()
         return True, 'Parent account updated successfully'
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         conn.close()
         return False, 'Username or email already exists'
 
@@ -361,7 +361,7 @@ def create_lecturer_user(username, password, full_name, email):
         conn.commit()
         conn.close()
         return lecturer_id
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         conn.close()
         return None
 
@@ -392,7 +392,7 @@ def update_lecturer_user(lecturer_id, username, full_name, email, password=None)
         conn.commit()
         conn.close()
         return True, 'Lecturer account updated successfully'
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         conn.close()
         return False, 'Username or email already exists'
 
@@ -438,7 +438,7 @@ def link_parent_to_student(parent_id, student_id, relationship='Parent'):
         conn.commit()
         conn.close()
         return True, 'Parent linked to student successfully'
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         conn.close()
         return False, 'This parent is already linked to that student'
 
@@ -1613,7 +1613,7 @@ def create_subject(name):
         cursor.execute('INSERT INTO subjects (name) VALUES (?)', (name.strip(),))
         conn.commit()
         success = True
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         success = False
     conn.close()
     return success
@@ -1626,7 +1626,7 @@ def update_subject(subject_id, name):
         cursor.execute('UPDATE subjects SET name = ? WHERE id = ?', (name.strip(), subject_id))
         conn.commit()
         success = True
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         success = False
     conn.close()
     return success
