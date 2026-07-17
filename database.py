@@ -757,6 +757,48 @@ def parent_can_access_student(parent_id, student_id):
     conn.close()
     return can_access
 
+def calculate_working_days(month_str, up_to_today=True):
+    """
+    Calculate the number of working days in a month.
+    Excludes Sundays and standard national/state holidays.
+    If up_to_today is True and the month is the current month, only count days up to today.
+    """
+    from datetime import date
+    import calendar
+
+    # Standard public holidays in Karnataka, India (month, day)
+    holidays = {
+        (1, 1),   # New Year's Day
+        (1, 26),  # Republic Day
+        (5, 1),   # Labour Day
+        (8, 15),  # Independence Day
+        (10, 2),  # Gandhi Jayanti
+        (11, 1),  # Kannada Rajyotsava
+        (12, 25), # Christmas
+    }
+
+    try:
+        y, m = [int(p) for p in month_str.split('-')]
+        today_dt = date.today()
+        
+        if y > today_dt.year or (y == today_dt.year and m > today_dt.month):
+            return 0
+
+        if up_to_today and y == today_dt.year and m == today_dt.month:
+            end_day = today_dt.day
+        else:
+            end_day = calendar.monthrange(y, m)[1]
+
+        working_days = 0
+        for day in range(1, end_day + 1):
+            d = date(y, m, day)
+            # Exclude Sundays and public holidays
+            if d.weekday() != 6 and (m, day) not in holidays:
+                working_days += 1
+        return working_days
+    except Exception:
+        return 22
+
 def get_attendance_settings():
     """Get attendance policy settings."""
     conn = get_connection()
@@ -801,14 +843,7 @@ def get_attendance_settings():
         updated_month_str = ''
 
     if current_month_str != updated_month_str:
-        import calendar
-        today_dt = date.today()
-        y, m = today_dt.year, today_dt.month
-        end_day = calendar.monthrange(y, m)[1]
-        auto_working_days = 0
-        for day in range(1, end_day + 1):
-            if date(y, m, day).weekday() != 6:
-                auto_working_days += 1
+        auto_working_days = calculate_working_days(current_month_str, up_to_today=False)
         
         # Save auto calculated working days to database
         conn = get_connection()
@@ -1461,27 +1496,7 @@ def get_user_attendance_summary(user_id, month=None):
     from datetime import date
     month = month or date.today().strftime('%Y-%m')
     settings = get_attendance_settings()
-    
-    import calendar
-    try:
-        y, m = [int(p) for p in month.split('-')]
-        today_dt = date.today()
-        if y == today_dt.year and m == today_dt.month:
-            # Current month: calculate elapsed working days up to today (excluding Sundays)
-            working_days = 0
-            for day in range(1, today_dt.day + 1):
-                if date(y, m, day).weekday() != 6:
-                    working_days += 1
-        elif y > today_dt.year or (y == today_dt.year and m > today_dt.month):
-            working_days = 0
-        else:
-            end_day = calendar.monthrange(y, m)[1]
-            working_days = 0
-            for day in range(1, end_day + 1):
-                if date(y, m, day).weekday() != 6:
-                    working_days += 1
-    except Exception:
-        working_days = settings['working_days_per_month']
+    working_days = calculate_working_days(month, up_to_today=True)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -1518,27 +1533,7 @@ def get_monthly_attendance_report(month=None):
     from datetime import date
     month = month or date.today().strftime('%Y-%m')
     settings = get_attendance_settings()
-    
-    import calendar
-    try:
-        y, m = [int(p) for p in month.split('-')]
-        today_dt = date.today()
-        if y == today_dt.year and m == today_dt.month:
-            # Current month: calculate elapsed working days up to today (excluding Sundays)
-            working_days = 0
-            for day in range(1, today_dt.day + 1):
-                if date(y, m, day).weekday() != 6:
-                    working_days += 1
-        elif y > today_dt.year or (y == today_dt.year and m > today_dt.month):
-            working_days = 0
-        else:
-            end_day = calendar.monthrange(y, m)[1]
-            working_days = 0
-            for day in range(1, end_day + 1):
-                if date(y, m, day).weekday() != 6:
-                    working_days += 1
-    except Exception:
-        working_days = settings['working_days_per_month']
+    working_days = calculate_working_days(month, up_to_today=True)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -1785,17 +1780,10 @@ def get_session_attendance_details(session_id):
     return attendance
 
 def get_current_month_working_days():
-    """Return the number of days in the current calendar month excluding Sundays."""
+    """Return the number of days in the current calendar month excluding Sundays and holidays."""
     from datetime import date
-    import calendar
-    today_dt = date.today()
-    y, m = today_dt.year, today_dt.month
-    end_day = calendar.monthrange(y, m)[1]
-    working_days = 0
-    for day in range(1, end_day + 1):
-        if date(y, m, day).weekday() != 6:
-            working_days += 1
-    return working_days
+    current_month_str = date.today().strftime('%Y-%m')
+    return calculate_working_days(current_month_str, up_to_today=False)
 
 def get_subjects():
     """Get all subject accounts."""
