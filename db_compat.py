@@ -31,7 +31,7 @@ else:
 
 # ─── SQL normalisation ────────────────────────────────────────────────────────
 _SQLITE_TO_PG = [
-    ("DATE('now', 'localtime')",               "CURRENT_DATE::text"),
+    ("DATE('now', 'localtime')",               "CURRENT_DATE"),
     ("DATETIME('now', 'localtime')",           "NOW()"),
     ("DATE(timestamp, 'localtime')",           "(timestamp AT TIME ZONE 'UTC')::date"),
     ("DATE(check_in_time, 'localtime')",       "(check_in_time AT TIME ZONE 'UTC')::date"),
