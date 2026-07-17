@@ -250,6 +250,33 @@ def dashboard():
                          attendance_summary=attendance_summary,
                          attendance_settings=attendance_settings)
 
+@app.route('/student_export_attendance')
+@student_required
+def student_export_attendance():
+    """Export logged-in student's own attendance history as CSV."""
+    user_id = session['user_id']
+    month = request.args.get('month') or date.today().strftime('%Y-%m')
+    records = get_user_attendance(user_id, date=None)
+    summary = get_user_attendance_summary(user_id, month)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Student', session.get('full_name', ''), 'Month', month])
+    writer.writerow(['Working Days', summary['working_days'], 'Present', summary['present_days'],
+                     'Late', summary['late_days'], 'Absent', summary['absent_days'],
+                     'Percentage', f"{summary['percentage']}%"])
+    writer.writerow([])
+    writer.writerow(['Date', 'Subject', 'Check-in', 'Check-out', 'Status', 'Confidence'])
+    for r in records:
+        att_date = r[0]
+        check_in  = r[1].strftime('%H:%M:%S') if hasattr(r[1], 'strftime') else (r[1][11:19] if r[1] else '-')
+        check_out = r[2].strftime('%H:%M:%S') if hasattr(r[2], 'strftime') else (r[2][11:19] if r[2] else 'Pending')
+        writer.writerow([att_date, r[6] if len(r) > 6 else 'General', check_in, check_out, r[3], f"{r[4] or 0:.2f}"])
+
+    filename = f'my_attendance_{session.get("username", "student")}_{month}.csv'
+    return Response(output.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': f'attachment; filename={filename}'})
+
 # ==================== ADMIN ROUTES ====================
 
 @app.route('/admin_dashboard')
@@ -579,6 +606,38 @@ def parent_student_details(student_id):
                            today_record=today_record,
                            attendance_settings=get_attendance_settings())
 
+@app.route('/parent_export_attendance/<int:student_id>')
+@parent_required
+def parent_export_attendance(student_id):
+    """Export a linked student's attendance history as CSV (parent view)."""
+    if not parent_can_access_student(session['user_id'], student_id):
+        return redirect(url_for('parent_dashboard'))
+    student = get_student_by_id(student_id)
+    if not student:
+        return redirect(url_for('parent_dashboard'))
+
+    month = request.args.get('month') or date.today().strftime('%Y-%m')
+    records = get_user_attendance(student_id)
+    summary = get_user_attendance_summary(student_id, month)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Student', student['full_name'], 'Month', month])
+    writer.writerow(['Working Days', summary['working_days'], 'Present', summary['present_days'],
+                     'Late', summary['late_days'], 'Absent', summary['absent_days'],
+                     'Percentage', f"{summary['percentage']}%"])
+    writer.writerow([])
+    writer.writerow(['Date', 'Subject', 'Check-in', 'Check-out', 'Status', 'Confidence'])
+    for r in records:
+        att_date = r[0]
+        check_in  = r[1].strftime('%H:%M:%S') if hasattr(r[1], 'strftime') else (r[1][11:19] if r[1] else '-')
+        check_out = r[2].strftime('%H:%M:%S') if hasattr(r[2], 'strftime') else (r[2][11:19] if r[2] else 'Pending')
+        writer.writerow([att_date, r[6] if len(r) > 6 else 'General', check_in, check_out, r[3], f"{r[4] or 0:.2f}"])
+
+    filename = f'attendance_{student["username"]}_{month}.csv'
+    return Response(output.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': f'attachment; filename={filename}'})
+
 # ==================== END PARENT ROUTES ====================
 
 # ==================== LECTURER ROUTES ====================
@@ -742,6 +801,30 @@ def admin_attendance_settings():
         smtp_user=smtp_user, smtp_password=smtp_password, smtp_sender=smtp_sender
     )
     return jsonify({'success': True, 'message': 'Attendance policy and configurations updated successfully.'})
+
+@app.route('/lecturer_export_monthly')
+@lecturer_required
+def lecturer_export_monthly():
+    """Export all students' monthly attendance report as CSV (lecturer view)."""
+    month = request.args.get('month') or date.today().strftime('%Y-%m')
+    report = get_monthly_attendance_report(month)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Student ID', 'Full Name', 'Username', 'Email', 'Month',
+                     'Working Days', 'Present Days', 'Late Days', 'Absent Days',
+                     'Completed Checkouts', 'Attendance %', 'Low Attendance'])
+    for row in report:
+        writer.writerow([
+            row['id'], row['full_name'], row['username'], row['email'], month,
+            row['working_days'], row['present_days'], row['late_days'],
+            row['absent_days'], row['completed_days'], row['percentage'],
+            'Yes' if row['is_low'] else 'No'
+        ])
+
+    filename = f'monthly_report_{month}.csv'
+    return Response(output.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': f'attachment; filename={filename}'})
 
 @app.route('/admin_export_attendance')
 @admin_required

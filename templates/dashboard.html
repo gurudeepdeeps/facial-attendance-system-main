@@ -108,6 +108,8 @@
                 <h2>Attendance history</h2>
                 <p>Recent check-in and check-out records</p>
             </div>
+            <a class="btn btn-success" href="{{ url_for('student_export_attendance') }}"
+               style="text-decoration: none;">⬇ Export CSV</a>
         </div>
         {% if attendance_records %}
         <div class="table-wrap">

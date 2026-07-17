@@ -101,6 +101,8 @@
                 <h2>Monthly Attendance Report</h2>
                 <p>Overview of all students' attendance performance for the current month</p>
             </div>
+            <a class="btn btn-success" href="{{ url_for('lecturer_export_monthly') }}"
+               style="text-decoration: none;">&#x2B07; Export CSV</a>
         </div>
         {% if monthly_report %}
         <div class="table-wrap">

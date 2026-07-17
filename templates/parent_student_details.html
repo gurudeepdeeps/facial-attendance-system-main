@@ -4,6 +4,8 @@
 {% block page_subtitle %}Read-only parent view of profile and attendance{% endblock %}
 {% block top_actions %}
     <a class="btn btn-secondary" href="{{ url_for('parent_dashboard') }}">Back to portal</a>
+    <a class="btn btn-success" href="{{ url_for('parent_export_attendance', student_id=student.id) }}"
+       style="text-decoration: none;">⬇ Export CSV</a>
     <a class="btn btn-secondary" href="{{ url_for('logout') }}">Sign out</a>
 {% endblock %}
 
