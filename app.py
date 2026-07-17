@@ -37,6 +37,28 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-change-this
 camera = None
 
 
+# ─── Jinja2 type-safe date/time filters ───────────────────────────────────────
+def fmt_date(value, fmt='%Y-%m-%d'):
+    """Format a date/datetime value safely for both SQLite strings and PG objects."""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return value[:10]
+    return value.strftime(fmt)
+
+def fmt_time(value, fmt='%H:%M:%S'):
+    """Format a time/datetime value safely for both SQLite strings and PG objects."""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return value[11:19]
+    return value.strftime(fmt)
+
+app.jinja_env.filters['fmt_date'] = fmt_date
+app.jinja_env.filters['fmt_time'] = fmt_time
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 # Configuration
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER

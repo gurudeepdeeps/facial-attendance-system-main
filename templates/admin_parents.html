@@ -105,7 +105,7 @@
                         </td>
                         <td>
                             <input form="update-parent-{{ parent[0] }}" type="email" name="email" value="{{ parent[3] }}" aria-label="Parent email" required>
-                            <div class="muted">Created {{ parent[4][:10] }}</div>
+                            <div class="muted">Created {{ parent[4]|fmt_date }}</div>
                         </td>
                         <td>
                             <input form="update-parent-{{ parent[0] }}" type="password" name="password" placeholder="Leave unchanged" aria-label="New password">
@@ -153,7 +153,7 @@
                                 <input name="relationship" value="{{ link[7] }}" aria-label="Relationship" required>
                             </form>
                         </td>
-                        <td>{{ link[8][:10] }}</td>
+                        <td>{{ link[8]|fmt_date }}</td>
                         <td>
                             <div class="button-row">
                                 <button class="btn-small btn-approve" form="update-link-{{ link[0] }}" type="submit">Save</button>

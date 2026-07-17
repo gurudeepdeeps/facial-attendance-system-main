@@ -30,7 +30,7 @@
         </div>
         <div class="detail-list" style="margin-top: 20px;">
             <div class="detail-row"><span class="muted">Email</span><strong>{{ student.email }}</strong></div>
-            <div class="detail-row"><span class="muted">Registered</span><strong>{{ student.created_at[:10] }}</strong></div>
+            <div class="detail-row"><span class="muted">Registered</span><strong>{{ student.created_at|fmt_date }}</strong></div>
             <div class="detail-row"><span class="muted">Reporting time</span><strong>{{ attendance_settings.reporting_time }}</strong></div>
         </div>
     </section>
@@ -59,8 +59,8 @@
         {% if today_record %}
             <div class="metric-grid">
                 <div class="metric"><span>Status</span><strong style="font-size: 1.2rem;">{{ today_record.status|replace('_', ' ')|title }}</strong></div>
-                <div class="metric"><span>Check-in</span><strong style="font-size: 1.1rem;">{{ today_record.check_in_time[11:19] if today_record.check_in_time else '-' }}</strong></div>
-                <div class="metric"><span>Check-out</span><strong style="font-size: 1.1rem;">{{ today_record.check_out_time[11:19] if today_record.check_out_time else 'Pending' }}</strong></div>
+                <div class="metric"><span>Check-in</span><strong style="font-size: 1.1rem;">{{ today_record.check_in_time|fmt_time if today_record.check_in_time else '-' }}</strong></div>
+                <div class="metric"><span>Check-out</span><strong style="font-size: 1.1rem;">{{ today_record.check_out_time|fmt_time if today_record.check_out_time else 'Pending' }}</strong></div>
                 <div class="metric"><span>Lifecycle</span><strong style="font-size: 1.1rem;">{{ 'Complete' if today_record.check_out_time else 'Active' }}</strong></div>
             </div>
         {% else %}
@@ -79,8 +79,8 @@
                     <tr>
                         <td>{{ record[0] }}</td>
                         <td><strong>{{ record[6] if record|length > 6 else 'General' }}</strong></td>
-                        <td>{{ record[1][11:19] if record[1] else '-' }}</td>
-                        <td>{{ record[2][11:19] if record[2] else 'Pending' }}</td>
+                        <td>{{ record[1]|fmt_time if record[1] else '-' }}</td>
+                        <td>{{ record[2]|fmt_time if record[2] else 'Pending' }}</td>
                         <td><span class="badge badge-{{ record[3] }}">{{ record[3]|replace('_', ' ') }}</span></td>
                         <td>{{ '%.2f'|format(record[4] or 0) }}</td>
                     </tr>

@@ -22,13 +22,7 @@
                         </td>
                         <td><strong>{{ student[2] }}</strong><div class="muted">{{ student[3] }}</div></td>
                         <td>@{{ student[1] }}</td>
-                        <td>
-                            {% if student[4] is string %}
-                                {{ student[4][:10] }}
-                            {% else %}
-                                {{ student[4].strftime('%Y-%m-%d') }}
-                            {% endif %}
-                        </td>
+                        <td>{{ student[4]|fmt_date }}</td>
                         <td><span class="badge badge-{{ list_status }}">{{ list_status }}</span></td>
                         <td>
                             <div class="actions">

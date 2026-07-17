@@ -37,13 +37,7 @@
                 {% for student in pending_students[:5] %}
                     <tr>
                         <td><strong>{{ student[2] }}</strong><div class="muted">{{ student[3] }}</div></td>
-                        <td>
-                            {% if student[4] is string %}
-                                {{ student[4][:10] }}
-                            {% else %}
-                                {{ student[4].strftime('%Y-%m-%d') }}
-                            {% endif %}
-                        </td>
+                        <td>{{ student[4]|fmt_date }}</td>
                         <td class="actions">
                             <button class="btn-small btn-approve" onclick="updateStudent({{ student[0] }}, 'approve')">Approve</button>
                             <button class="btn-small btn-reject" onclick="updateStudent({{ student[0] }}, 'reject')">Reject</button>
@@ -204,28 +198,8 @@
                     <tr>
                         <td><strong>{{ item[2] }}</strong><div class="muted">@{{ item[3] }}</div></td>
                         <td>{{ item[5] }}</td>
-                        <td>
-                            {% if item[6] %}
-                                {% if item[6] is string %}
-                                    {{ item[6][11:19] }}
-                                {% else %}
-                                    {{ item[6].strftime('%H:%M:%S') }}
-                                {% endif %}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if item[7] %}
-                                {% if item[7] is string %}
-                                    {{ item[7][11:19] }}
-                                {% else %}
-                                    {{ item[7].strftime('%H:%M:%S') }}
-                                {% endif %}
-                            {% else %}
-                                Pending
-                            {% endif %}
-                        </td>
+                        <td>{{ item[6]|fmt_time if item[6] else '-' }}</td>
+                        <td>{{ item[7]|fmt_time if item[7] else 'Pending' }}</td>
                         <td><span class="badge badge-{{ item[8] }}">{{ item[8]|replace('_', ' ') }}</span></td>
                         <td>{{ '%.2f'|format(item[9] or 0) }}</td>
                     </tr>

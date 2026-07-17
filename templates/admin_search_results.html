@@ -25,7 +25,7 @@
                         <td><strong>{{ student[2] }}</strong><div class="muted">{{ student[3] }}</div></td>
                         <td>@{{ student[1] }}</td>
                         <td><span class="badge badge-{{ student[4] }}">{{ student[4] }}</span></td>
-                        <td>{{ student[5][:10] }}</td>
+                        <td>{{ student[5]|fmt_date }}</td>
                         <td><a class="btn-small btn-secondary" href="{{ url_for('admin_student_details', student_id=student[0]) }}">View</a></td>
                     </tr>
                 {% endfor %}

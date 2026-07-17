@@ -19,13 +19,7 @@
                         <td><img class="face-thumb" src="{{ request[8] }}" alt="{{ request[2] }}"></td>
                         <td><strong>{{ request[2] }}</strong><div class="muted">@{{ request[3] }} | {{ request[4] }}</div></td>
                         <td><span class="badge badge-neutral">{{ request[6]|replace('_', ' ')|title }}</span></td>
-                        <td>
-                            {% if request[7] is string %}
-                                {{ request[7][:19] }}
-                            {% else %}
-                                {{ request[7].strftime('%Y-%m-%d %H:%M:%S') }}
-                            {% endif %}
-                        </td>
+                        <td>{{ request[7]|fmt_date }}</td>
                         <td>
                             <div class="actions">
                                 <button class="btn-small btn-secondary" type="button" onclick='openImageModal({{ request[8]|tojson }}, {{ request[2]|tojson }})'>View</button>
