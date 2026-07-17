@@ -4,6 +4,7 @@ Flask
 opencv-python-headless
 dlib-bin
 face-recognition
+face-recognition-models
 numpy>=1.24.0
 Pillow
 werkzeug
