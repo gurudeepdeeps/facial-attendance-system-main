@@ -64,21 +64,24 @@ class CompatCursor:
         self._cur = raw_cursor
         self.lastrowid = None
 
-    def execute(self, sql: str, params=()):
+    def execute(self, sql: str, params=None):
         sql = _normalize_sql(sql)
+
+        # Convert empty collections or tuples to None for psycopg2/sqlite3 compatibility
+        exec_params = params if params else None
 
         if IS_POSTGRES and re.match(r'\s*INSERT\s+', sql, re.IGNORECASE):
             # Append RETURNING id if not already present
             if 'RETURNING' not in sql.upper():
                 sql = sql.rstrip().rstrip(';') + ' RETURNING id'
-            self._cur.execute(sql, params if params else None)
+            self._cur.execute(sql, exec_params)
             try:
                 row = self._cur.fetchone()
                 self.lastrowid = row[0] if row else None
             except Exception:
                 self.lastrowid = None
         else:
-            self._cur.execute(sql, params if params else None)
+            self._cur.execute(sql, exec_params)
             if not IS_POSTGRES:
                 self.lastrowid = getattr(self._cur, 'lastrowid', None)
 
