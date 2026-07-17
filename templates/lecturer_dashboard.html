@@ -94,6 +94,51 @@
         {% else %}
         <div class="empty-state">You have not created any sessions yet. Open your first session to track attendance.</div>
         {% endif %}
+    <!-- Monthly Attendance Report -->
+    <section class="panel" style="grid-column: span 12;">
+        <div class="panel-title">
+            <div>
+                <h2>Monthly Attendance Report</h2>
+                <p>Overview of all students' attendance performance for the current month</p>
+            </div>
+        </div>
+        {% if monthly_report %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Present Days</th>
+                        <th>Late Days</th>
+                        <th>Absent Days</th>
+                        <th>Completed</th>
+                        <th>Percentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in monthly_report %}
+                    <tr>
+                        <td>
+                            <strong>{{ student.full_name }}</strong>
+                            <div class="muted">@{{ student.username }}</div>
+                        </td>
+                        <td>{{ student.present_days }}</td>
+                        <td>{{ student.late_days }}</td>
+                        <td>{{ student.absent_days }}</td>
+                        <td>{{ student.completed_days }}</td>
+                        <td>
+                            <span class="badge {{ 'badge-low' if student.is_low else 'badge-success' }}">
+                                {{ student.percentage }}%
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">No student records found.</div>
+        {% endif %}
     </section>
 </main>
 {% endblock %}

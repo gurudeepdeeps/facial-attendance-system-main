@@ -594,7 +594,10 @@ def lecturer_dashboard():
             active_session = s
             break
     subjects = get_subjects()
-    return render_template('lecturer_dashboard.html', sessions=sessions, active_session=active_session, subjects=subjects)
+    monthly_report = get_monthly_attendance_report()
+    for row in monthly_report:
+        row['face_image_url'] = build_face_image_url(row.get('face_image_path'))
+    return render_template('lecturer_dashboard.html', sessions=sessions, active_session=active_session, subjects=subjects, monthly_report=monthly_report)
 
 @app.route('/lecturer_open_session', methods=['POST'])
 @lecturer_required
