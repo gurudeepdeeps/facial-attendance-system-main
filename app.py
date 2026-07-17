@@ -34,6 +34,8 @@ from face_utils import (submit_face_approval_request, recognize_faces_in_frame,
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-change-this')
+camera = None
+
 
 # Configuration
 UPLOAD_FOLDER = 'static/uploads'
