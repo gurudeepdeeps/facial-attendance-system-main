@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
     <main class="auth-shell">
         <section class="auth-side">
@@ -22,7 +24,8 @@
             </div>
             <div>
                 <h1>Attendance that follows policy, not paperwork.</h1>
-                <p>Face verification, daily check-in and check-out, late classification, attendance analytics, and administrative reports in one system.</p>
+                <p>Face verification, daily check-in & check-out, late classification, attendance analytics, and
+                    administrative reports in one system.</p>
             </div>
             <p>Facial Attendance Management System</p>
         </section>
@@ -33,7 +36,7 @@
                     <h2>Student sign in</h2>
                     <p class="muted">Access attendance and your monthly summary.</p>
                     {% if student_error %}
-                        <div class="message message-error">{{ student_error }}</div>
+                    <div class="message message-error">{{ student_error }}</div>
                     {% endif %}
                     <form method="POST">
                         <input type="hidden" name="login_type" value="student">
@@ -44,8 +47,10 @@
                         <div class="field">
                             <label for="student-password">Password</label>
                             <div class="password-wrap">
-                                <input id="student-password" type="password" name="password" autocomplete="current-password" required>
-                                <button class="password-toggle" type="button" data-password-target="student-password" aria-label="Show password">Show</button>
+                                <input id="student-password" type="password" name="password"
+                                    autocomplete="current-password" required>
+                                <button class="password-toggle" type="button" data-password-target="student-password"
+                                    aria-label="Show password">Show</button>
                             </div>
                         </div>
                         <div class="field">
@@ -53,7 +58,8 @@
                         </div>
                     </form>
                     <div class="field">
-                        <a class="btn btn-secondary" href="{{ url_for('registration') }}" style="width: 100%;">Create student account</a>
+                        <a class="btn btn-secondary" href="{{ url_for('registration') }}" style="width: 100%;">Create
+                            student account</a>
                     </div>
                 </article>
 
@@ -61,7 +67,7 @@
                     <h2>Parent sign in</h2>
                     <p class="muted">Track linked student attendance and alerts.</p>
                     {% if parent_error %}
-                        <div class="message message-error">{{ parent_error }}</div>
+                    <div class="message message-error">{{ parent_error }}</div>
                     {% endif %}
                     <form method="POST">
                         <input type="hidden" name="login_type" value="parent">
@@ -72,12 +78,15 @@
                         <div class="field">
                             <label for="parent-password">Password</label>
                             <div class="password-wrap">
-                                <input id="parent-password" type="password" name="password" autocomplete="current-password" required>
-                                <button class="password-toggle" type="button" data-password-target="parent-password" aria-label="Show password">Show</button>
+                                <input id="parent-password" type="password" name="password"
+                                    autocomplete="current-password" required>
+                                <button class="password-toggle" type="button" data-password-target="parent-password"
+                                    aria-label="Show password">Show</button>
                             </div>
                         </div>
                         <div class="field">
-                            <button class="btn btn-primary" type="submit" style="width: 100%;">Open parent portal</button>
+                            <button class="btn btn-primary" type="submit" style="width: 100%;">Open parent
+                                portal</button>
                         </div>
                     </form>
 
@@ -87,7 +96,7 @@
                     <h2>Lecturer sign in</h2>
                     <p class="muted">Manage active sessions and check-in logs.</p>
                     {% if lecturer_error %}
-                        <div class="message message-error">{{ lecturer_error }}</div>
+                    <div class="message message-error">{{ lecturer_error }}</div>
                     {% endif %}
                     <form method="POST">
                         <input type="hidden" name="login_type" value="lecturer">
@@ -98,12 +107,15 @@
                         <div class="field">
                             <label for="lecturer-password">Password</label>
                             <div class="password-wrap">
-                                <input id="lecturer-password" type="password" name="password" autocomplete="current-password" required>
-                                <button class="password-toggle" type="button" data-password-target="lecturer-password" aria-label="Show password">Show</button>
+                                <input id="lecturer-password" type="password" name="password"
+                                    autocomplete="current-password" required>
+                                <button class="password-toggle" type="button" data-password-target="lecturer-password"
+                                    aria-label="Show password">Show</button>
                             </div>
                         </div>
                         <div class="field">
-                            <button class="btn btn-primary" type="submit" style="width: 100%;">Open lecturer portal</button>
+                            <button class="btn btn-primary" type="submit" style="width: 100%;">Open lecturer
+                                portal</button>
                         </div>
                     </form>
 
@@ -113,7 +125,7 @@
                     <h2>Administrator</h2>
                     <p class="muted">Manage approvals, policy reports, and alerts.</p>
                     {% if admin_error %}
-                        <div class="message message-error">{{ admin_error }}</div>
+                    <div class="message message-error">{{ admin_error }}</div>
                     {% endif %}
                     <form method="POST">
                         <input type="hidden" name="login_type" value="admin">
@@ -124,12 +136,15 @@
                         <div class="field">
                             <label for="admin-password">Password</label>
                             <div class="password-wrap">
-                                <input id="admin-password" type="password" name="password" autocomplete="current-password" required>
-                                <button class="password-toggle" type="button" data-password-target="admin-password" aria-label="Show password">Show</button>
+                                <input id="admin-password" type="password" name="password"
+                                    autocomplete="current-password" required>
+                                <button class="password-toggle" type="button" data-password-target="admin-password"
+                                    aria-label="Show password">Show</button>
                             </div>
                         </div>
                         <div class="field">
-                            <button class="btn btn-success" type="submit" style="width: 100%;">Open admin console</button>
+                            <button class="btn btn-success" type="submit" style="width: 100%;">Open admin
+                                console</button>
                         </div>
                     </form>
 
@@ -148,4 +163,5 @@
         });
     </script>
 </body>
+
 </html>
