@@ -1417,14 +1417,25 @@ def get_user_attendance_summary(user_id, month=None):
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT
-            COUNT(DISTINCT attendance_date),
-            SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN check_out_time IS NOT NULL THEN 1 ELSE 0 END)
-        FROM attendance
-        WHERE user_id = ? AND substr(attendance_date, 1, 7) = ?
-    ''', (user_id, month))
+    from db_compat import IS_POSTGRES
+    if IS_POSTGRES:
+        cursor.execute('''
+            SELECT
+                COUNT(DISTINCT attendance_date),
+                SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN check_out_time IS NOT NULL THEN 1 ELSE 0 END)
+            FROM attendance
+            WHERE user_id = ? AND TO_CHAR(attendance_date, 'YYYY-MM') = ?
+        ''', (user_id, month))
+    else:
+        cursor.execute('''
+            SELECT
+                COUNT(DISTINCT attendance_date),
+                SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN check_out_time IS NOT NULL THEN 1 ELSE 0 END)
+            FROM attendance
+            WHERE user_id = ? AND substr(attendance_date, 1, 7) = ?
+        ''', (user_id, month))
     row = cursor.fetchone()
     conn.close()
 
@@ -1474,7 +1485,9 @@ def get_monthly_attendance_report(month=None):
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
+    from db_compat import IS_POSTGRES
+    date_filter_sql = "TO_CHAR(a.attendance_date, 'YYYY-MM') = ?" if IS_POSTGRES else "substr(a.attendance_date, 1, 7) = ?"
+    cursor.execute(f'''
         SELECT
             u.id,
             u.full_name,
@@ -1486,7 +1499,7 @@ def get_monthly_attendance_report(month=None):
             lf.image_path
         FROM users u
         LEFT JOIN attendance a
-            ON a.user_id = u.id AND substr(a.attendance_date, 1, 7) = ?
+            ON a.user_id = u.id AND {date_filter_sql}
         LEFT JOIN (
             SELECT f.user_id, f.image_path
             FROM face_encodings f

@@ -235,26 +235,24 @@
         });
     }
 
-    // Intercept check-in clicks to verify location and handle Chrome/browser blocks
+    // Intercept check-in / check-out clicks to verify location first
     const checkInLink = document.getElementById('checkInLink');
     if (checkInLink) {
         checkInLink.addEventListener('click', (event) => {
-            // Check if student has already completed check-in and the check-out is blocked because the session was closed by the lecturer
-            {% if today_record and not today_record.check_out_time %}
-                // If checked in, but the session is closed/none active, block checkout
-                event.preventDefault();
-                alert("Checkout is blocked. The lecturer has closed the attendance session for this subject.");
-                return;
+            // "View completed day" state — the /attendance route will redirect back to dashboard automatically.
+            // No need to intercept; let the default link navigate.
+            {% if today_record and today_record.check_out_time %}
+                return; // completed — just follow the link (will be redirected back)
             {% endif %}
 
-            {% if not today_record or not today_record.check_out_time %}
+            // For check-in or check-out: verify location before proceeding
             event.preventDefault();
             const targetUrl = checkInLink.href;
             
             const originalText = checkInLink.innerHTML;
             checkInLink.innerHTML = '<span class="spinner" style="border-left-color:#fff;"></span> Verifying Location...';
             checkInLink.style.pointerEvents = 'none';
- 
+
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
@@ -278,7 +276,6 @@
                 checkInLink.style.pointerEvents = 'auto';
                 alert("Your browser does not support location services.");
             }
-            {% endif %}
         });
     }
 </script>

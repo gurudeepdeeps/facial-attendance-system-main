@@ -637,7 +637,13 @@ def lecturer_export_session(session_id):
     conn.close()
     
     subject = s_info[0] if s_info else "Session"
-    date_str = s_info[1][:10] if s_info else "Export"
+    raw_date = s_info[1] if s_info else None
+    if raw_date is None:
+        date_str = "Export"
+    elif isinstance(raw_date, str):
+        date_str = raw_date[:10]
+    else:
+        date_str = raw_date.strftime('%Y-%m-%d')
     
     output = io.StringIO()
     writer = csv.writer(output)
@@ -1077,7 +1083,11 @@ def get_attendance_stats():
     # Process data for charts
     daily_attendance = {}
     for record in records:
-        date_str = record[0].split()[0]  # Get date part
+        raw_date = record[0]
+        if isinstance(raw_date, str):
+            date_str = raw_date.split()[0]  # "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD"
+        else:
+            date_str = raw_date.strftime('%Y-%m-%d')  # native date/datetime object
         if date_str not in daily_attendance:
             daily_attendance[date_str] = 0
         daily_attendance[date_str] += 1
