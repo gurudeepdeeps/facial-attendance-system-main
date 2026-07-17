@@ -40,6 +40,7 @@ _SQLITE_TO_PG = [
     ("datetime(a.check_out_time, 'localtime')","a.check_out_time"),
     ("datetime(check_in_time, 'localtime')",   "check_in_time"),
     ("datetime(check_out_time, 'localtime')",  "check_out_time"),
+    ("substr(",                                "substring("),
 ]
 
 
