@@ -1092,6 +1092,14 @@ def logout():
         camera.release()
         camera = None
     
+    # Sign out of Supabase session if active
+    from database import supabase_client
+    if supabase_client:
+        try:
+            supabase_client.auth.sign_out()
+        except Exception:
+            pass
+            
     session.clear()
     return redirect(url_for('login'))
 
