@@ -21,6 +21,16 @@ DB_PATH = os.path.join(BASE_DIR, 'attendance.db')
 
 # column_exists and ensure_column are imported from db_compat
 
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '').rstrip('/')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
+supabase_client = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        from supabase import create_client
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception:
+        pass
+
 def init_db():
     """Initialize the database with required tables"""
     conn = get_connection()
@@ -36,9 +46,11 @@ def init_db():
             email TEXT UNIQUE NOT NULL,
             role TEXT DEFAULT 'student',
             status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            supabase_uid TEXT
         )
     ''')
+    ensure_column(cursor, 'users', 'supabase_uid', 'TEXT')
     legacy_role = 'em' + 'ployee'
     cursor.execute('UPDATE users SET role = ? WHERE role = ?', ('student', legacy_role))
     
@@ -165,11 +177,33 @@ def init_db():
     # Create default admin account if not exists
     cursor.execute('SELECT COUNT(*) FROM users WHERE role = ?', ('admin',))
     if cursor.fetchone()[0] == 0:
-        admin_password_hash = hash_password('admin123')
+        admin_email = 'admin@attendance.system'
+        admin_pass = 'admin123'
+        admin_password_hash = hash_password(admin_pass)
+        
+        supabase_uid = None
+        if supabase_client:
+            try:
+                auth_response = supabase_client.auth.sign_up({
+                    "email": admin_email,
+                    "password": admin_pass,
+                    "options": {
+                        "data": {
+                            "username": "admin",
+                            "full_name": "System Administrator",
+                            "role": "admin"
+                        }
+                    }
+                })
+                if auth_response and auth_response.user:
+                    supabase_uid = auth_response.user.id
+            except Exception:
+                pass
+
         cursor.execute('''
-            INSERT INTO users (username, password_hash, full_name, email, role, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', ('admin', admin_password_hash, 'System Administrator', 'admin@attendance.system', 'admin', 'approved'))
+            INSERT INTO users (username, password_hash, full_name, email, role, status, supabase_uid)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', ('admin', admin_password_hash, 'System Administrator', admin_email, 'admin', 'approved', supabase_uid))
         conn.commit()
 
 
@@ -211,43 +245,103 @@ def hash_password(password):
     """Hash password using SHA-256"""
     return hashlib.sha256(password.encode()).hexdigest()
 
-def verify_user(username, password):
-    """Verify user credentials"""
+def verify_user(username_or_email, password):
+    """Verify user credentials via Supabase Auth with local DB metadata loading"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    password_hash = hash_password(password)
-    cursor.execute('''
-        SELECT id, username, full_name, email, role, status FROM users 
-        WHERE username = ? AND password_hash = ?
-    ''', (username, password_hash))
+    # Try finding email locally if username is provided
+    email = username_or_email
+    if '@' not in username_or_email:
+        cursor.execute('SELECT email FROM users WHERE username = ?', (username_or_email,))
+        row = cursor.fetchone()
+        if row:
+            email = row[0]
+            
+    user_metadata = None
     
-    user = cursor.fetchone()
+    if supabase_client:
+        try:
+            # Login against Supabase Auth
+            auth_response = supabase_client.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            if auth_response and auth_response.user:
+                # Auth success, find or sync metadata locally
+                cursor.execute('''
+                    SELECT id, username, full_name, email, role, status, supabase_uid FROM users 
+                    WHERE email = ?
+                ''', (email,))
+                user_row = cursor.fetchone()
+                if user_row:
+                    # Update local profile with Supabase Auth UID mapping if blank
+                    if not user_row[6]:
+                        cursor.execute('UPDATE users SET supabase_uid = ? WHERE id = ?', (auth_response.user.id, user_row[0]))
+                        conn.commit()
+                    user_metadata = {
+                        'id': user_row[0],
+                        'username': user_row[1],
+                        'full_name': user_row[2],
+                        'email': user_row[3],
+                        'role': user_row[4],
+                        'status': user_row[5]
+                    }
+        except Exception:
+            pass
+            
+    # Fallback to local DB checking if Supabase Auth is disabled/offline
+    if not user_metadata:
+        password_hash = hash_password(password)
+        cursor.execute('''
+            SELECT id, username, full_name, email, role, status FROM users 
+            WHERE (email = ? OR username = ?) AND password_hash = ?
+        ''', (email, username_or_email, password_hash))
+        user_row = cursor.fetchone()
+        if user_row:
+            user_metadata = {
+                'id': user_row[0],
+                'username': user_row[1],
+                'full_name': user_row[2],
+                'email': user_row[3],
+                'role': user_row[4],
+                'status': user_row[5]
+            }
+            
     conn.close()
-    
-    if user:
-        return {
-            'id': user[0],
-            'username': user[1],
-            'full_name': user[2],
-            'email': user[3],
-            'role': user[4],
-            'status': user[5]
-        }
-    return None
+    return user_metadata
+
 
 def create_user(username, password, full_name, email):
     """Create a new student user with pending approval status."""
     conn = get_connection()
     cursor = conn.cursor()
-    
     password_hash = hash_password(password)
     
+    supabase_uid = None
+    if supabase_client:
+        try:
+            auth_response = supabase_client.auth.sign_up({
+                "email": email,
+                "password": password,
+                "options": {
+                    "data": {
+                        "username": username,
+                        "full_name": full_name,
+                        "role": "student"
+                    }
+                }
+            })
+            if auth_response and auth_response.user:
+                supabase_uid = auth_response.user.id
+        except Exception:
+            pass
+
     try:
         cursor.execute('''
-            INSERT INTO users (username, password_hash, full_name, email, role, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (username, password_hash, full_name, email, 'student', 'pending'))
+            INSERT INTO users (username, password_hash, full_name, email, role, status, supabase_uid)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (username, password_hash, full_name, email, 'student', 'pending', supabase_uid))
         
         user_id = cursor.lastrowid
         conn.commit()
@@ -262,12 +356,31 @@ def create_parent_user(username, password, full_name, email):
     conn = get_connection()
     cursor = conn.cursor()
     password_hash = hash_password(password)
+    
+    supabase_uid = None
+    if supabase_client:
+        try:
+            auth_response = supabase_client.auth.sign_up({
+                "email": email,
+                "password": password,
+                "options": {
+                    "data": {
+                        "username": username,
+                        "full_name": full_name,
+                        "role": "parent"
+                    }
+                }
+            })
+            if auth_response and auth_response.user:
+                supabase_uid = auth_response.user.id
+        except Exception:
+            pass
 
     try:
         cursor.execute('''
-            INSERT INTO users (username, password_hash, full_name, email, role, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (username, password_hash, full_name, email, 'parent', 'approved'))
+            INSERT INTO users (username, password_hash, full_name, email, role, status, supabase_uid)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (username, password_hash, full_name, email, 'parent', 'approved', supabase_uid))
         parent_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -352,12 +465,31 @@ def create_lecturer_user(username, password, full_name, email):
     conn = get_connection()
     cursor = conn.cursor()
     password_hash = hash_password(password)
+    
+    supabase_uid = None
+    if supabase_client:
+        try:
+            auth_response = supabase_client.auth.sign_up({
+                "email": email,
+                "password": password,
+                "options": {
+                    "data": {
+                        "username": username,
+                        "full_name": full_name,
+                        "role": "lecturer"
+                    }
+                }
+            })
+            if auth_response and auth_response.user:
+                supabase_uid = auth_response.user.id
+        except Exception:
+            pass
 
     try:
         cursor.execute('''
-            INSERT INTO users (username, password_hash, full_name, email, role, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (username, password_hash, full_name, email, 'lecturer', 'approved'))
+            INSERT INTO users (username, password_hash, full_name, email, role, status, supabase_uid)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (username, password_hash, full_name, email, 'lecturer', 'approved', supabase_uid))
         lecturer_id = cursor.lastrowid
         conn.commit()
         conn.close()
