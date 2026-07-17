@@ -33,7 +33,7 @@
             <select id="subjectSelect" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; font-size: 0.95rem;" {% if not subjects %}disabled{% endif %}>
                 {% if subjects %}
                     {% for subject in subjects %}
-                        <option value="{{ subject.name }}" style="background:#222;">{{ subject.name }}</option>
+                        <option value="{{ subject.name }}" style="background:#222;" {% if subject.name == selected_subject %}selected{% endif %}>{{ subject.name }}</option>
                     {% endfor %}
                 {% else %}
                     <option value="" style="background:#222;">No subjects available — contact admin</option>
@@ -50,8 +50,10 @@
         </div>
 
         <div class="button-row">
-            <button id="markAttendanceBtn" class="btn btn-primary">
-                Verify face and mark attendance
+            <button id="markAttendanceBtn" class="btn btn-primary" {% if today_record and today_record.check_out_time %}disabled{% endif %}>
+                {% if not today_record %}Verify face and Check-in
+                {% elif not today_record.check_out_time %}Verify face and Check-out
+                {% else %}Attendance Completed{% endif %}
             </button>
         </div>
         <div id="attendanceMessage"></div>
@@ -224,6 +226,13 @@
                 console.error("Frame recognition error:", err);
             }
         }, 1500);
+    }
+
+    if (subjectSelect) {
+        subjectSelect.addEventListener('change', () => {
+            const selected = subjectSelect.value;
+            window.location.href = `{{ url_for("attendance") }}?subject=${encodeURIComponent(selected)}`;
+        });
     }
 
     if (button) {

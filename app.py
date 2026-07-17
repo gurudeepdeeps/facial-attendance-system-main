@@ -1011,15 +1011,19 @@ def attendance():
     if not has_face_registered(session['user_id']):
         return redirect(url_for('register_face'))
     
-    today_record = get_today_user_attendance(session['user_id'])
-    if today_record and today_record.get('check_out_time'):
-        return redirect(url_for('dashboard'))
-        
+    selected_subject = request.args.get('subject')
+    subjects = get_subjects()
+    if not selected_subject and subjects:
+        selected_subject = subjects[0]['name']
+
+    today_record = get_today_user_attendance(session['user_id'], subject=selected_subject)
+    
     return render_template(
         'attendance.html',
         today_record=today_record,
         attendance_settings=get_attendance_settings(),
-        subjects=get_subjects()
+        subjects=subjects,
+        selected_subject=selected_subject
     )
 
 # Server-side camera and feed generation removed. Camera is now captured client-side via WebRTC.
