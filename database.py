@@ -102,21 +102,25 @@ def init_db():
     ensure_column(cursor, 'attendance', 'remarks', 'TEXT')
     ensure_column(cursor, 'attendance', 'subject', "TEXT DEFAULT 'General'")
 
-    cursor.execute('''
-        UPDATE attendance
-        SET attendance_date = DATE(timestamp, 'localtime')
-        WHERE attendance_date IS NULL
-    ''')
-    cursor.execute('''
-        UPDATE attendance
-        SET check_in_time = timestamp
-        WHERE check_in_time IS NULL
-    ''')
-    cursor.execute('''
-        UPDATE attendance
-        SET check_in_confidence = confidence
-        WHERE check_in_confidence IS NULL
-    ''')
+    # These migration updates only apply to SQLite (legacy data fix).
+    # On PostgreSQL the columns are created correctly from the start.
+    from db_compat import IS_POSTGRES
+    if not IS_POSTGRES:
+        cursor.execute('''
+            UPDATE attendance
+            SET attendance_date = DATE(timestamp, 'localtime')
+            WHERE attendance_date IS NULL
+        ''')
+        cursor.execute('''
+            UPDATE attendance
+            SET check_in_time = timestamp
+            WHERE check_in_time IS NULL
+        ''')
+        cursor.execute('''
+            UPDATE attendance
+            SET check_in_confidence = confidence
+            WHERE check_in_confidence IS NULL
+        ''')
 
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS attendance_settings (
@@ -1486,7 +1490,10 @@ def get_monthly_attendance_report(month=None):
     conn = get_connection()
     cursor = conn.cursor()
     from db_compat import IS_POSTGRES
-    date_filter_sql = "TO_CHAR(a.attendance_date, 'YYYY-MM') = ?" if IS_POSTGRES else "substr(a.attendance_date, 1, 7) = ?"
+    if IS_POSTGRES:
+        date_filter_sql = "TO_CHAR(a.attendance_date, 'YYYY-MM') = %s"
+    else:
+        date_filter_sql = "substr(a.attendance_date, 1, 7) = ?"
     cursor.execute(f'''
         SELECT
             u.id,
