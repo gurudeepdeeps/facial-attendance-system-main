@@ -4,7 +4,7 @@ Flask
 opencv-python-headless
 dlib-bin
 face-recognition
-face-recognition-models @ git+https://github.com/ageitgey/face_recognition_models.git
+face_recognition_models
 numpy>=1.24.0
 Pillow
 werkzeug
@@ -12,4 +12,4 @@ psycopg2-binary
 supabase
 gunicorn
 python-dotenv
-# force rebuild trig
+# force rebuild trig2
