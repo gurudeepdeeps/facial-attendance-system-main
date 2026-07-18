@@ -36,6 +36,13 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-change-this')
 camera = None
 
+@app.before_request
+def force_https():
+    # If the request comes from a reverse proxy like Railway/Render and is HTTP, redirect to HTTPS
+    if not request.is_secure and request.headers.get('X-Forwarded-Proto', 'http') == 'http':
+        url = request.url.replace('http://', 'https://', 1)
+        return redirect(url, code=301)
+
 
 # ─── Jinja2 type-safe date/time filters ───────────────────────────────────────
 def fmt_date(value, fmt='%Y-%m-%d'):
